@@ -41,6 +41,10 @@ type Config struct {
 	SMTPFromName  string
 	SMTPFromEmail string
 
+	// SMTP Inbound (SMTP Server Relay)
+	SMTPInboundPort string
+	SMTPInboundHost string
+
 	// Tracking
 	TrackingBaseURL string
 }
@@ -82,6 +86,10 @@ func Load() *Config {
 		SMTPPassword:  getEnv("SMTP_PASSWORD", ""),
 		SMTPFromName:  getEnv("SMTP_FROM_NAME", "RealSend"),
 		SMTPFromEmail: getEnv("SMTP_FROM_EMAIL", "noreply@realsend.id"),
+
+		// SMTP Inbound (SMTP Server Relay)
+		SMTPInboundPort: getEnv("SMTP_INBOUND_PORT", "2525"),
+		SMTPInboundHost: getEnv("SMTP_INBOUND_HOST", "smtp.realsend.id"),
 
 		// Tracking
 		TrackingBaseURL: getEnv("TRACKING_BASE_URL", "http://localhost:3001"),

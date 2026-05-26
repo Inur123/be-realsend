@@ -89,8 +89,9 @@ func RegisterRoutes(
 	analytics.Get("/domains", analyticsHandler.GetDomainBreakdown)
 
 	// Log routes (protected)
-	logs := api.Group("/logs", middleware.Protected(cfg))
-	logs.Get("/", logHandler.ListLogs)
+	emailLogs := api.Group("/email-logs", middleware.Protected(cfg))
+	emailLogs.Get("/", logHandler.ListLogs)
+	emailLogs.Get("/:id", logHandler.GetLog)
 
 	// Tracking routes (public at root)
 	app.Get("/t/o/:id", trackingHandler.TrackOpen)

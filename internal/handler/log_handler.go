@@ -60,3 +60,32 @@ func (h *LogHandler) ListLogs(c *fiber.Ctx) error {
 		TotalPages: totalPages,
 	})
 }
+
+// GetLog handles GET /api/v1/logs/:id
+func (h *LogHandler) GetLog(c *fiber.Ctx) error {
+	userIDStr, ok := c.Locals("user_id").(string)
+	if !ok {
+		return utils.Unauthorized(c, "unauthorized")
+	}
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		return utils.BadRequest(c, "invalid user id")
+	}
+
+	idStr := c.Params("id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		return utils.BadRequest(c, "invalid log id")
+	}
+
+	log, err := h.emailRepo.GetByID(c.Context(), id)
+	if err != nil {
+		return utils.NotFound(c, "log not found")
+	}
+
+	if log.UserID != userID {
+		return utils.Forbidden(c, "forbidden")
+	}
+
+	return utils.Success(c, log)
+}

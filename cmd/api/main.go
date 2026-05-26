@@ -17,6 +17,7 @@ import (
 	"github.com/realsend/be-realsend/internal/handler"
 	"github.com/realsend/be-realsend/internal/repository"
 	"github.com/realsend/be-realsend/internal/service"
+	"github.com/realsend/be-realsend/internal/smtpserver"
 )
 
 func main() {
@@ -132,6 +133,12 @@ func main() {
 	shutdownChan := make(chan os.Signal, 1)
 	signal.Notify(shutdownChan, syscall.SIGINT, syscall.SIGTERM)
 
+	// Start SMTP Inbound Server
+	smtpServer, err := smtpserver.StartServer(cfg, apiKeyRepo, emailService)
+	if err != nil {
+		log.Fatalf("Failed to start SMTP inbound server: %v", err)
+	}
+
 	go func() {
 		port := cfg.AppPort
 		log.Printf("Starting API server on port %s in %s mode...", port, cfg.AppEnv)
@@ -147,6 +154,14 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
+	// Shutdown SMTP Inbound Server
+	if err := smtpServer.Close(); err != nil {
+		log.Printf("SMTP server shutdown error: %v", err)
+	} else {
+		log.Println("SMTP server shut down successfully.")
+	}
+
+	// Shutdown Fiber API Server
 	if err := app.ShutdownWithContext(ctx); err != nil {
 		log.Printf("Fiber shutdown error: %v", err)
 	}

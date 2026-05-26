@@ -68,7 +68,7 @@ func main() {
 	// 5. Create worker handlers
 	emailWorker := worker.NewEmailWorker(emailRepo, domainRepo, cfg, webhookSvc)
 	webhookWorker := worker.NewWebhookWorker(webhookRepo)
-	cleanupWorker := worker.NewCleanupWorker(emailRepo)
+	cleanupWorker := worker.NewCleanupWorker(emailRepo, subRepo)
 
 	// 5b. Start Asynq Scheduler for periodic tasks
 	scheduler := asynq.NewScheduler(
@@ -87,11 +87,17 @@ func main() {
 		log.Fatalf("Failed to register daily log cleanup task: %v", err)
 	}
 
+	// Schedule daily quota reset in PostgreSQL at 12:00 AM UTC (queued into mail_low)
+	if _, err := scheduler.Register("0 0 * * *", asynq.NewTask(worker.TaskDailyQuotaReset, nil, asynq.Queue("mail_low"))); err != nil {
+		log.Fatalf("Failed to register daily quota reset task: %v", err)
+	}
+
 	// 6. Register task handlers
 	mux := asynq.NewServeMux()
 	mux.HandleFunc(service.TaskSendEmail, emailWorker.ProcessTask)
 	mux.HandleFunc(service.TaskDispatchWebhook, webhookWorker.ProcessTask)
 	mux.HandleFunc(worker.TaskLogsCleanup, cleanupWorker.ProcessTask)
+	mux.HandleFunc(worker.TaskDailyQuotaReset, cleanupWorker.ProcessQuotaResetTask)
 
 	// 7. Graceful shutdown signal handling
 	stopChan := make(chan os.Signal, 1)

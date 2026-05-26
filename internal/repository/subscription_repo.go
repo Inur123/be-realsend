@@ -15,6 +15,7 @@ type SubscriptionRepository interface {
 	Create(ctx context.Context, tx pgx.Tx, sub *models.Subscription) error
 	GetByUserID(ctx context.Context, userID uuid.UUID) (*models.Subscription, error)
 	UpdateUsage(ctx context.Context, userID uuid.UUID, dailyInc, monthlyInc int) error
+	ResetDailyUsage(ctx context.Context) error
 	GetOverrides(ctx context.Context, userID uuid.UUID) ([]*models.UserPlanOverride, error)
 	SetOverride(ctx context.Context, override *models.UserPlanOverride) error
 	DeleteOverride(ctx context.Context, userID uuid.UUID, featureKey string) error
@@ -102,6 +103,20 @@ func (r *postgresSubscriptionRepository) UpdateUsage(ctx context.Context, userID
 	_, err := r.db.Exec(ctx, query, dailyInc, monthlyInc, userID)
 	if err != nil {
 		return fmt.Errorf("update subscription usage db: %w", err)
+	}
+	return nil
+}
+
+func (r *postgresSubscriptionRepository) ResetDailyUsage(ctx context.Context) error {
+	query := `
+		UPDATE subscriptions
+		SET emails_sent_today = 0,
+		    updated_at = NOW()
+		WHERE status = 'active'
+	`
+	_, err := r.db.Exec(ctx, query)
+	if err != nil {
+		return fmt.Errorf("reset daily subscription usage db: %w", err)
 	}
 	return nil
 }

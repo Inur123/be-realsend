@@ -77,13 +77,13 @@ func main() {
 	adminService := service.NewAdminService(userRepo, planRepo, subRepo, auditLogRepo)
 
 	// 7. Initialize handlers
-	authHandler := handler.NewAuthHandler(authService)
+	authHandler := handler.NewAuthHandler(authService, auditLogRepo)
 	planHandler := handler.NewPlanHandler(planService)
-	domainHandler := handler.NewDomainHandler(domainService)
-	apiKeyHandler := handler.NewAPIKeyHandler(apiKeyService)
+	domainHandler := handler.NewDomainHandler(domainService, auditLogRepo)
+	apiKeyHandler := handler.NewAPIKeyHandler(apiKeyService, auditLogRepo)
 	emailHandler := handler.NewEmailHandler(emailService)
 	trackingHandler := handler.NewTrackingHandler(trackingService)
-	webhookHandler := handler.NewWebhookHandler(webhookService)
+	webhookHandler := handler.NewWebhookHandler(webhookService, auditLogRepo)
 	analyticsHandler := handler.NewAnalyticsHandler(analyticsService)
 	logHandler := handler.NewLogHandler(emailRepo)
 	adminHandler := handler.NewAdminHandler(adminService, analyticsService)

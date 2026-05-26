@@ -3,16 +3,21 @@ package handler
 import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
+	"github.com/realsend/be-realsend/internal/repository"
 	"github.com/realsend/be-realsend/internal/service"
 	"github.com/realsend/be-realsend/internal/utils"
 )
 
 type DomainHandler struct {
 	domainService service.DomainService
+	auditRepo     repository.AuditLogRepository
 }
 
-func NewDomainHandler(domainService service.DomainService) *DomainHandler {
-	return &DomainHandler{domainService: domainService}
+func NewDomainHandler(domainService service.DomainService, auditRepo repository.AuditLogRepository) *DomainHandler {
+	return &DomainHandler{
+		domainService: domainService,
+		auditRepo:     auditRepo,
+	}
 }
 
 type addDomainRequest struct {
@@ -44,6 +49,9 @@ func (h *DomainHandler) AddDomain(c *fiber.Ctx) error {
 	if err != nil {
 		return utils.Conflict(c, err.Error())
 	}
+
+	// Audit log
+	utils.LogAction(c.Context(), h.auditRepo, c, userID, "domain.created", "domain", &domain.ID, map[string]string{"domain_name": domain.DomainName})
 
 	return utils.SuccessCreated(c, fiber.Map{
 		"domain":  domain,
@@ -137,6 +145,9 @@ func (h *DomainHandler) VerifyDomain(c *fiber.Ctx) error {
 		return utils.InternalError(c, err.Error())
 	}
 
+	// Audit log
+	utils.LogAction(c.Context(), h.auditRepo, c, userID, "domain.verified", "domain", &id, map[string]string{"domain_name": updated.DomainName, "status": string(updated.Status)})
+
 	return utils.Success(c, updated)
 }
 
@@ -171,6 +182,9 @@ func (h *DomainHandler) DeleteDomain(c *fiber.Ctx) error {
 	if err != nil {
 		return utils.InternalError(c, err.Error())
 	}
+
+	// Audit log
+	utils.LogAction(c.Context(), h.auditRepo, c, userID, "domain.deleted", "domain", &id, map[string]string{"domain_name": domain.DomainName})
 
 	return utils.Success(c, fiber.Map{
 		"message": "domain deleted successfully",

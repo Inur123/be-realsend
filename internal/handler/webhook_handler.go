@@ -3,6 +3,7 @@ package handler
 import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
+	"github.com/realsend/be-realsend/internal/repository"
 	"github.com/realsend/be-realsend/internal/service"
 	"github.com/realsend/be-realsend/internal/utils"
 )
@@ -10,11 +11,15 @@ import (
 // WebhookHandler handles webhook configuration endpoints.
 type WebhookHandler struct {
 	webhookService service.WebhookService
+	auditRepo      repository.AuditLogRepository
 }
 
 // NewWebhookHandler creates a new WebhookHandler.
-func NewWebhookHandler(webhookService service.WebhookService) *WebhookHandler {
-	return &WebhookHandler{webhookService: webhookService}
+func NewWebhookHandler(webhookService service.WebhookService, auditRepo repository.AuditLogRepository) *WebhookHandler {
+	return &WebhookHandler{
+		webhookService: webhookService,
+		auditRepo:      auditRepo,
+	}
 }
 
 type createWebhookRequest struct {
@@ -51,6 +56,9 @@ func (h *WebhookHandler) CreateWebhook(c *fiber.Ctx) error {
 	if err != nil {
 		return utils.Conflict(c, err.Error())
 	}
+
+	// Audit log
+	utils.LogAction(c.Context(), h.auditRepo, c, userID, "webhook.created", "webhook", &webhook.ID, map[string]interface{}{"url": webhook.URL, "events": webhook.Events})
 
 	return utils.SuccessCreated(c, webhook)
 }
@@ -133,6 +141,9 @@ func (h *WebhookHandler) UpdateWebhook(c *fiber.Ctx) error {
 		return utils.BadRequest(c, err.Error())
 	}
 
+	// Audit log
+	utils.LogAction(c.Context(), h.auditRepo, c, userID, "webhook.updated", "webhook", &id, map[string]interface{}{"url": webhook.URL, "events": webhook.Events, "is_active": webhook.IsActive})
+
 	return utils.Success(c, webhook)
 }
 
@@ -155,6 +166,9 @@ func (h *WebhookHandler) DeleteWebhook(c *fiber.Ctx) error {
 	if err := h.webhookService.DeleteWebhook(c.Context(), id, userID); err != nil {
 		return utils.BadRequest(c, err.Error())
 	}
+
+	// Audit log
+	utils.LogAction(c.Context(), h.auditRepo, c, userID, "webhook.deleted", "webhook", &id, nil)
 
 	return utils.Success(c, fiber.Map{"message": "webhook deleted successfully"})
 }

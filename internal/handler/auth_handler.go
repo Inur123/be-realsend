@@ -3,16 +3,21 @@ package handler
 import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
+	"github.com/realsend/be-realsend/internal/repository"
 	"github.com/realsend/be-realsend/internal/service"
 	"github.com/realsend/be-realsend/internal/utils"
 )
 
 type AuthHandler struct {
 	authService service.AuthService
+	auditRepo   repository.AuditLogRepository
 }
 
-func NewAuthHandler(authService service.AuthService) *AuthHandler {
-	return &AuthHandler{authService: authService}
+func NewAuthHandler(authService service.AuthService, auditRepo repository.AuditLogRepository) *AuthHandler {
+	return &AuthHandler{
+		authService: authService,
+		auditRepo:   auditRepo,
+	}
 }
 
 type registerRequest struct {
@@ -53,6 +58,9 @@ func (h *AuthHandler) Register(c *fiber.Ctx) error {
 		return utils.Conflict(c, err.Error())
 	}
 
+	// Audit log
+	utils.LogAction(c.Context(), h.auditRepo, c, user.ID, "auth.register", "user", &user.ID, map[string]string{"email": user.Email})
+
 	return utils.SuccessCreated(c, user)
 }
 
@@ -71,6 +79,9 @@ func (h *AuthHandler) Login(c *fiber.Ctx) error {
 	if err != nil {
 		return utils.Unauthorized(c, err.Error())
 	}
+
+	// Audit log
+	utils.LogAction(c.Context(), h.auditRepo, c, user.ID, "auth.login", "user", &user.ID, map[string]string{"email": user.Email})
 
 	return utils.Success(c, fiber.Map{
 		"token": token,
@@ -124,6 +135,9 @@ func (h *AuthHandler) UpdateProfile(c *fiber.Ctx) error {
 		return utils.InternalError(c, err.Error())
 	}
 
+	// Audit log
+	utils.LogAction(c.Context(), h.auditRepo, c, userID, "auth.profile_updated", "user", &userID, map[string]string{"email": user.Email, "full_name": user.FullName})
+
 	return utils.Success(c, user)
 }
 
@@ -153,7 +167,36 @@ func (h *AuthHandler) ChangePassword(c *fiber.Ctx) error {
 		return utils.BadRequest(c, err.Error())
 	}
 
+	// Audit log
+	utils.LogAction(c.Context(), h.auditRepo, c, userID, "auth.password_changed", "user", &userID, nil)
+
 	return utils.Success(c, fiber.Map{
 		"message": "password updated successfully",
+	})
+}
+
+// Logout handles user logout audit log.
+func (h *AuthHandler) Logout(c *fiber.Ctx) error {
+	userIDStr, ok := c.Locals("user_id").(string)
+	if !ok {
+		return utils.Unauthorized(c, "unauthorized")
+	}
+
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		return utils.BadRequest(c, "invalid user id")
+	}
+
+	user, err := h.authService.GetProfile(c.Context(), userID)
+	var email string
+	if err == nil && user != nil {
+		email = user.Email
+	}
+
+	// Audit log
+	utils.LogAction(c.Context(), h.auditRepo, c, userID, "auth.logout", "user", &userID, map[string]string{"email": email})
+
+	return utils.Success(c, fiber.Map{
+		"message": "logged out successfully",
 	})
 }

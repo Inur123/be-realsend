@@ -49,6 +49,7 @@ func RegisterRoutes(
 	auth.Post("/login", authHandler.Login)
 
 	// Auth routes (protected)
+	auth.Post("/logout", middleware.Protected(cfg), authHandler.Logout)
 	protectedAuth := auth.Group("/me", middleware.Protected(cfg))
 	protectedAuth.Get("/", authHandler.Me)
 	protectedAuth.Put("/", authHandler.UpdateProfile)

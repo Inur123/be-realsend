@@ -3,16 +3,21 @@ package handler
 import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
+	"github.com/realsend/be-realsend/internal/repository"
 	"github.com/realsend/be-realsend/internal/service"
 	"github.com/realsend/be-realsend/internal/utils"
 )
 
 type APIKeyHandler struct {
 	keyService service.APIKeyService
+	auditRepo  repository.AuditLogRepository
 }
 
-func NewAPIKeyHandler(keyService service.APIKeyService) *APIKeyHandler {
-	return &APIKeyHandler{keyService: keyService}
+func NewAPIKeyHandler(keyService service.APIKeyService, auditRepo repository.AuditLogRepository) *APIKeyHandler {
+	return &APIKeyHandler{
+		keyService: keyService,
+		auditRepo:  auditRepo,
+	}
 }
 
 type createAPIKeyRequest struct {
@@ -54,6 +59,9 @@ func (h *APIKeyHandler) CreateKey(c *fiber.Ctx) error {
 	if err != nil {
 		return utils.Conflict(c, err.Error())
 	}
+
+	// Audit log
+	utils.LogAction(c.Context(), h.auditRepo, c, userID, "api_key.created", "api_key", &keyMeta.ID, map[string]string{"name": keyMeta.Name})
 
 	// Important: Return BOTH rawKey (the secret revealed exactly once) and stored keyMeta
 	return utils.SuccessCreated(c, fiber.Map{
@@ -142,6 +150,9 @@ func (h *APIKeyHandler) RevokeKey(c *fiber.Ctx) error {
 	if err != nil {
 		return utils.InternalError(c, err.Error())
 	}
+
+	// Audit log
+	utils.LogAction(c.Context(), h.auditRepo, c, userID, "api_key.deleted", "api_key", &id, map[string]string{"name": key.Name})
 
 	return utils.Success(c, fiber.Map{
 		"message": "api key revoked successfully",

@@ -14,25 +14,34 @@ import (
 // AdminService manages admin-only backend actions and audits.
 type AdminService interface {
 	// Plans
-	CreatePlan(ctx context.Context, actorID uuid.UUID, plan *models.Plan) error
-	UpdatePlan(ctx context.Context, actorID uuid.UUID, plan *models.Plan) error
-	DeletePlan(ctx context.Context, actorID uuid.UUID, id uuid.UUID) error
+	ListPlans(ctx context.Context) ([]*models.Plan, error)
+	CreatePlan(ctx context.Context, actorID uuid.UUID, plan *models.Plan, meta AuditMeta) error
+	UpdatePlan(ctx context.Context, actorID uuid.UUID, plan *models.Plan, meta AuditMeta) error
+	DeletePlan(ctx context.Context, actorID uuid.UUID, id uuid.UUID, meta AuditMeta) error
 	// Users
 	ListUsers(ctx context.Context, page, perPage int, search string) ([]*models.User, int64, error)
-	SuspendUser(ctx context.Context, actorID uuid.UUID, targetUserID uuid.UUID, note string) error
-	UnsuspendUser(ctx context.Context, actorID uuid.UUID, targetUserID uuid.UUID) error
-	ChangeUserRole(ctx context.Context, actorID uuid.UUID, targetUserID uuid.UUID, role models.UserRole) error
-	OverrideUserFeature(ctx context.Context, actorID uuid.UUID, targetUserID uuid.UUID, featureKey, value, note string, durationDays int) error
-	DeleteUserOverride(ctx context.Context, actorID uuid.UUID, targetUserID uuid.UUID, featureKey string) error
+	SuspendUser(ctx context.Context, actorID uuid.UUID, targetUserID uuid.UUID, note string, meta AuditMeta) error
+	UnsuspendUser(ctx context.Context, actorID uuid.UUID, targetUserID uuid.UUID, meta AuditMeta) error
+	ChangeUserRole(ctx context.Context, actorID uuid.UUID, targetUserID uuid.UUID, role models.UserRole, meta AuditMeta) error
+	DeleteUser(ctx context.Context, actorID uuid.UUID, targetUserID uuid.UUID, meta AuditMeta) error
+	OverrideUserFeature(ctx context.Context, actorID uuid.UUID, targetUserID uuid.UUID, featureKey, value, note string, durationDays int, meta AuditMeta) error
+	DeleteUserOverride(ctx context.Context, actorID uuid.UUID, targetUserID uuid.UUID, featureKey string, meta AuditMeta) error
 	// Audit Logs
 	ListAuditLogs(ctx context.Context, page, perPage int) ([]*models.AuditLog, int64, error)
+	GetAuditLog(ctx context.Context, id uuid.UUID) (*models.AuditLog, error)
+}
+
+type AuditMeta struct {
+	IPAddress string
+	UserAgent string
+	Location  string
 }
 
 type adminService struct {
-	userRepo   repository.UserRepository
-	planRepo   repository.PlanRepository
-	subRepo    repository.SubscriptionRepository
-	auditRepo  repository.AuditLogRepository
+	userRepo  repository.UserRepository
+	planRepo  repository.PlanRepository
+	subRepo   repository.SubscriptionRepository
+	auditRepo repository.AuditLogRepository
 }
 
 // NewAdminService creates a new AdminService.
@@ -43,14 +52,14 @@ func NewAdminService(
 	auditRepo repository.AuditLogRepository,
 ) AdminService {
 	return &adminService{
-		userRepo:   userRepo,
-		planRepo:   planRepo,
-		subRepo:    subRepo,
-		auditRepo:  auditRepo,
+		userRepo:  userRepo,
+		planRepo:  planRepo,
+		subRepo:   subRepo,
+		auditRepo: auditRepo,
 	}
 }
 
-func (s *adminService) logAction(ctx context.Context, actorID uuid.UUID, action string, targetType string, targetID uuid.UUID, details interface{}) {
+func (s *adminService) logAction(ctx context.Context, actorID uuid.UUID, action string, targetType string, targetID uuid.UUID, details interface{}, meta AuditMeta) {
 	detailsJSON, _ := json.Marshal(details)
 	log := &models.AuditLog{
 		ID:         uuid.New(),
@@ -59,13 +68,23 @@ func (s *adminService) logAction(ctx context.Context, actorID uuid.UUID, action 
 		TargetType: targetType,
 		TargetID:   &targetID,
 		Details:    detailsJSON,
-		IPAddress:  "0.0.0.0", // Filled by handler/middleware if needed
+		IPAddress:  meta.IPAddress,
+		UserAgent:  meta.UserAgent,
+		Location:   meta.Location,
 		CreatedAt:  time.Now(),
 	}
 	_ = s.auditRepo.Create(ctx, log)
 }
 
-func (s *adminService) CreatePlan(ctx context.Context, actorID uuid.UUID, plan *models.Plan) error {
+func (s *adminService) ListPlans(ctx context.Context) ([]*models.Plan, error) {
+	plans, err := s.planRepo.GetAllAdmin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list plans admin service: %w", err)
+	}
+	return plans, nil
+}
+
+func (s *adminService) CreatePlan(ctx context.Context, actorID uuid.UUID, plan *models.Plan, meta AuditMeta) error {
 	plan.ID = uuid.New()
 	plan.CreatedAt = time.Now()
 	plan.UpdatedAt = time.Now()
@@ -74,11 +93,11 @@ func (s *adminService) CreatePlan(ctx context.Context, actorID uuid.UUID, plan *
 		return fmt.Errorf("create plan service: %w", err)
 	}
 
-	s.logAction(ctx, actorID, "plan.created", "plan", plan.ID, plan)
+	s.logAction(ctx, actorID, "plan.created", "plan", plan.ID, plan, meta)
 	return nil
 }
 
-func (s *adminService) UpdatePlan(ctx context.Context, actorID uuid.UUID, plan *models.Plan) error {
+func (s *adminService) UpdatePlan(ctx context.Context, actorID uuid.UUID, plan *models.Plan, meta AuditMeta) error {
 	existing, err := s.planRepo.GetByID(ctx, plan.ID)
 	if err != nil {
 		return err
@@ -94,11 +113,11 @@ func (s *adminService) UpdatePlan(ctx context.Context, actorID uuid.UUID, plan *
 		return fmt.Errorf("update plan service: %w", err)
 	}
 
-	s.logAction(ctx, actorID, "plan.updated", "plan", plan.ID, plan)
+	s.logAction(ctx, actorID, "plan.updated", "plan", plan.ID, plan, meta)
 	return nil
 }
 
-func (s *adminService) DeletePlan(ctx context.Context, actorID uuid.UUID, id uuid.UUID) error {
+func (s *adminService) DeletePlan(ctx context.Context, actorID uuid.UUID, id uuid.UUID, meta AuditMeta) error {
 	existing, err := s.planRepo.GetByID(ctx, id)
 	if err != nil {
 		return err
@@ -111,7 +130,7 @@ func (s *adminService) DeletePlan(ctx context.Context, actorID uuid.UUID, id uui
 		return fmt.Errorf("delete plan service: %w", err)
 	}
 
-	s.logAction(ctx, actorID, "plan.deleted", "plan", id, existing)
+	s.logAction(ctx, actorID, "plan.deleted", "plan", id, existing, meta)
 	return nil
 }
 
@@ -124,27 +143,55 @@ func (s *adminService) ListUsers(ctx context.Context, page, perPage int, search 
 	}
 	offset := (page - 1) * perPage
 
-	return s.userRepo.ListAll(ctx, perPage, offset, search)
+	users, total, err := s.userRepo.ListAll(ctx, perPage, offset, search)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	for _, u := range users {
+		sub, err := s.subRepo.GetByUserID(ctx, u.ID)
+		if err == nil && sub != nil {
+			u.Subscription = sub
+		}
+		overrides, err := s.subRepo.GetOverrides(ctx, u.ID)
+		if err == nil && overrides != nil {
+			u.Overrides = overrides
+		} else {
+			u.Overrides = []*models.UserPlanOverride{}
+		}
+	}
+
+	return users, total, nil
 }
 
-func (s *adminService) SuspendUser(ctx context.Context, actorID uuid.UUID, targetUserID uuid.UUID, note string) error {
+func (s *adminService) SuspendUser(ctx context.Context, actorID uuid.UUID, targetUserID uuid.UUID, note string, meta AuditMeta) error {
 	target, err := s.userRepo.GetByID(ctx, targetUserID)
 	if err != nil {
 		return err
 	}
 	if target == nil {
 		return fmt.Errorf("user not found")
+	}
+
+	if target.Role == models.RoleSuperAdmin && actorID != targetUserID {
+		actor, err := s.userRepo.GetByID(ctx, actorID)
+		if err != nil {
+			return err
+		}
+		if actor == nil || actor.Role != models.RoleSuperAdmin {
+			return fmt.Errorf("only a super admin can modify a super admin user")
+		}
 	}
 
 	if err := s.userRepo.UpdateStatus(ctx, targetUserID, models.StatusSuspended); err != nil {
 		return err
 	}
 
-	s.logAction(ctx, actorID, "user.suspended", "user", targetUserID, map[string]string{"reason": note})
+	s.logAction(ctx, actorID, "user.suspended", "user", targetUserID, map[string]string{"reason": note}, meta)
 	return nil
 }
 
-func (s *adminService) UnsuspendUser(ctx context.Context, actorID uuid.UUID, targetUserID uuid.UUID) error {
+func (s *adminService) UnsuspendUser(ctx context.Context, actorID uuid.UUID, targetUserID uuid.UUID, meta AuditMeta) error {
 	target, err := s.userRepo.GetByID(ctx, targetUserID)
 	if err != nil {
 		return err
@@ -153,15 +200,37 @@ func (s *adminService) UnsuspendUser(ctx context.Context, actorID uuid.UUID, tar
 		return fmt.Errorf("user not found")
 	}
 
+	if target.Role == models.RoleSuperAdmin && actorID != targetUserID {
+		actor, err := s.userRepo.GetByID(ctx, actorID)
+		if err != nil {
+			return err
+		}
+		if actor == nil || actor.Role != models.RoleSuperAdmin {
+			return fmt.Errorf("only a super admin can modify a super admin user")
+		}
+	}
+
 	if err := s.userRepo.UpdateStatus(ctx, targetUserID, models.StatusActive); err != nil {
 		return err
 	}
 
-	s.logAction(ctx, actorID, "user.unsuspended", "user", targetUserID, nil)
+	s.logAction(ctx, actorID, "user.unsuspended", "user", targetUserID, nil, meta)
 	return nil
 }
 
-func (s *adminService) ChangeUserRole(ctx context.Context, actorID uuid.UUID, targetUserID uuid.UUID, role models.UserRole) error {
+func (s *adminService) ChangeUserRole(ctx context.Context, actorID uuid.UUID, targetUserID uuid.UUID, role models.UserRole, meta AuditMeta) error {
+	if actorID == targetUserID {
+		return fmt.Errorf("you cannot change your own role")
+	}
+
+	actor, err := s.userRepo.GetByID(ctx, actorID)
+	if err != nil {
+		return err
+	}
+	if actor == nil || actor.Role != models.RoleSuperAdmin {
+		return fmt.Errorf("only a super admin can change user roles")
+	}
+
 	target, err := s.userRepo.GetByID(ctx, targetUserID)
 	if err != nil {
 		return err
@@ -174,11 +243,36 @@ func (s *adminService) ChangeUserRole(ctx context.Context, actorID uuid.UUID, ta
 		return err
 	}
 
-	s.logAction(ctx, actorID, "user.role_changed", "user", targetUserID, map[string]string{"old_role": string(target.Role), "new_role": string(role)})
+	s.logAction(ctx, actorID, "user.role_changed", "user", targetUserID, map[string]string{"old_role": string(target.Role), "new_role": string(role)}, meta)
 	return nil
 }
 
-func (s *adminService) OverrideUserFeature(ctx context.Context, actorID uuid.UUID, targetUserID uuid.UUID, featureKey, value, note string, durationDays int) error {
+func (s *adminService) OverrideUserFeature(ctx context.Context, actorID uuid.UUID, targetUserID uuid.UUID, featureKey, value, note string, durationDays int, meta AuditMeta) error {
+	actor, err := s.userRepo.GetByID(ctx, actorID)
+	if err != nil {
+		return err
+	}
+	if actor == nil {
+		return fmt.Errorf("actor not found")
+	}
+
+	target, err := s.userRepo.GetByID(ctx, targetUserID)
+	if err != nil {
+		return err
+	}
+	if target == nil {
+		return fmt.Errorf("user not found")
+	}
+
+	if actor.Role != models.RoleSuperAdmin {
+		if actorID == targetUserID {
+			return fmt.Errorf("only a super admin can modify their own limits & features")
+		}
+		if target.Role != models.RoleUser {
+			return fmt.Errorf("admins can only manage limits & features of standard users")
+		}
+	}
+
 	var expiresAt *time.Time
 	if durationDays > 0 {
 		exp := time.Now().AddDate(0, 0, durationDays)
@@ -200,16 +294,70 @@ func (s *adminService) OverrideUserFeature(ctx context.Context, actorID uuid.UUI
 		return err
 	}
 
-	s.logAction(ctx, actorID, "user.override_set", "user", targetUserID, override)
+	s.logAction(ctx, actorID, "user.override_set", "user", targetUserID, override, meta)
 	return nil
 }
 
-func (s *adminService) DeleteUserOverride(ctx context.Context, actorID uuid.UUID, targetUserID uuid.UUID, featureKey string) error {
+func (s *adminService) DeleteUserOverride(ctx context.Context, actorID uuid.UUID, targetUserID uuid.UUID, featureKey string, meta AuditMeta) error {
+	actor, err := s.userRepo.GetByID(ctx, actorID)
+	if err != nil {
+		return err
+	}
+	if actor == nil {
+		return fmt.Errorf("actor not found")
+	}
+
+	target, err := s.userRepo.GetByID(ctx, targetUserID)
+	if err != nil {
+		return err
+	}
+	if target == nil {
+		return fmt.Errorf("user not found")
+	}
+
+	if actor.Role != models.RoleSuperAdmin {
+		if actorID == targetUserID {
+			return fmt.Errorf("only a super admin can modify their own limits & features")
+		}
+		if target.Role != models.RoleUser {
+			return fmt.Errorf("admins can only manage limits & features of standard users")
+		}
+	}
+
 	if err := s.subRepo.DeleteOverride(ctx, targetUserID, featureKey); err != nil {
 		return err
 	}
 
-	s.logAction(ctx, actorID, "user.override_deleted", "user", targetUserID, map[string]string{"feature_key": featureKey})
+	s.logAction(ctx, actorID, "user.override_deleted", "user", targetUserID, map[string]string{"feature_key": featureKey}, meta)
+	return nil
+}
+
+func (s *adminService) DeleteUser(ctx context.Context, actorID uuid.UUID, targetUserID uuid.UUID, meta AuditMeta) error {
+	if actorID == targetUserID {
+		return fmt.Errorf("you cannot delete your own account")
+	}
+
+	actor, err := s.userRepo.GetByID(ctx, actorID)
+	if err != nil {
+		return err
+	}
+	if actor == nil || actor.Role != models.RoleSuperAdmin {
+		return fmt.Errorf("only a super admin can delete users")
+	}
+
+	target, err := s.userRepo.GetByID(ctx, targetUserID)
+	if err != nil {
+		return err
+	}
+	if target == nil {
+		return fmt.Errorf("user not found")
+	}
+
+	if err := s.userRepo.Delete(ctx, targetUserID); err != nil {
+		return fmt.Errorf("delete user service: %w", err)
+	}
+
+	s.logAction(ctx, actorID, "user.deleted", "user", targetUserID, map[string]string{"email": target.Email}, meta)
 	return nil
 }
 
@@ -223,4 +371,15 @@ func (s *adminService) ListAuditLogs(ctx context.Context, page, perPage int) ([]
 	offset := (page - 1) * perPage
 
 	return s.auditRepo.List(ctx, perPage, offset)
+}
+
+func (s *adminService) GetAuditLog(ctx context.Context, id uuid.UUID) (*models.AuditLog, error) {
+	log, err := s.auditRepo.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if log == nil {
+		return nil, nil
+	}
+	return log, nil
 }

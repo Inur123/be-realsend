@@ -2,6 +2,7 @@ package handler
 
 import (
 	"strconv"
+	"strings"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
@@ -24,6 +25,52 @@ func NewAdminHandler(adminService service.AdminService, analyticsService service
 	}
 }
 
+func auditMetaFromCtx(c *fiber.Ctx) service.AuditMeta {
+	ip := c.Get("X-Forwarded-For")
+	if ip != "" {
+		ip = strings.TrimSpace(strings.Split(ip, ",")[0])
+	}
+	if ip == "" {
+		ip = c.Get("X-Real-IP")
+	}
+	if ip == "" {
+		ip = c.IP()
+	}
+	if ip == "" {
+		ip = "0.0.0.0"
+	}
+
+	location := c.Get("CF-IPCity")
+	if country := c.Get("CF-IPCountry"); country != "" {
+		if location != "" {
+			location = location + ", " + country
+		} else {
+			location = country
+		}
+	}
+	if location == "" {
+		location = c.Get("X-Vercel-IP-Country")
+	}
+	if location == "" {
+		location = "Tidak tersedia"
+	}
+
+	return service.AuditMeta{
+		IPAddress: ip,
+		UserAgent: c.Get("User-Agent"),
+		Location:  location,
+	}
+}
+
+// ListPlans handles GET /api/v1/admin/plans
+func (h *AdminHandler) ListPlans(c *fiber.Ctx) error {
+	plans, err := h.adminService.ListPlans(c.Context())
+	if err != nil {
+		return utils.InternalError(c, err.Error())
+	}
+	return utils.Success(c, plans)
+}
+
 // CreatePlan handles POST /api/v1/admin/plans
 func (h *AdminHandler) CreatePlan(c *fiber.Ctx) error {
 	actorIDStr, _ := c.Locals("user_id").(string)
@@ -34,7 +81,7 @@ func (h *AdminHandler) CreatePlan(c *fiber.Ctx) error {
 		return utils.BadRequest(c, "invalid request body")
 	}
 
-	if err := h.adminService.CreatePlan(c.Context(), actorID, &req); err != nil {
+	if err := h.adminService.CreatePlan(c.Context(), actorID, &req, auditMetaFromCtx(c)); err != nil {
 		return utils.InternalError(c, err.Error())
 	}
 
@@ -57,7 +104,7 @@ func (h *AdminHandler) UpdatePlan(c *fiber.Ctx) error {
 	}
 	req.ID = id
 
-	if err := h.adminService.UpdatePlan(c.Context(), actorID, &req); err != nil {
+	if err := h.adminService.UpdatePlan(c.Context(), actorID, &req, auditMetaFromCtx(c)); err != nil {
 		return utils.InternalError(c, err.Error())
 	}
 
@@ -74,7 +121,7 @@ func (h *AdminHandler) DeletePlan(c *fiber.Ctx) error {
 		return utils.BadRequest(c, "invalid plan id")
 	}
 
-	if err := h.adminService.DeletePlan(c.Context(), actorID, id); err != nil {
+	if err := h.adminService.DeletePlan(c.Context(), actorID, id, auditMetaFromCtx(c)); err != nil {
 		return utils.InternalError(c, err.Error())
 	}
 
@@ -120,7 +167,7 @@ func (h *AdminHandler) SuspendUser(c *fiber.Ctx) error {
 	}
 	_ = c.BodyParser(&req)
 
-	if err := h.adminService.SuspendUser(c.Context(), actorID, targetUserID, req.Reason); err != nil {
+	if err := h.adminService.SuspendUser(c.Context(), actorID, targetUserID, req.Reason, auditMetaFromCtx(c)); err != nil {
 		return utils.InternalError(c, err.Error())
 	}
 
@@ -137,7 +184,7 @@ func (h *AdminHandler) UnsuspendUser(c *fiber.Ctx) error {
 		return utils.BadRequest(c, "invalid user id")
 	}
 
-	if err := h.adminService.UnsuspendUser(c.Context(), actorID, targetUserID); err != nil {
+	if err := h.adminService.UnsuspendUser(c.Context(), actorID, targetUserID, auditMetaFromCtx(c)); err != nil {
 		return utils.InternalError(c, err.Error())
 	}
 
@@ -161,7 +208,7 @@ func (h *AdminHandler) ChangeUserRole(c *fiber.Ctx) error {
 		return utils.BadRequest(c, "invalid request body")
 	}
 
-	if err := h.adminService.ChangeUserRole(c.Context(), actorID, targetUserID, req.Role); err != nil {
+	if err := h.adminService.ChangeUserRole(c.Context(), actorID, targetUserID, req.Role, auditMetaFromCtx(c)); err != nil {
 		return utils.InternalError(c, err.Error())
 	}
 
@@ -188,7 +235,7 @@ func (h *AdminHandler) OverrideUserFeature(c *fiber.Ctx) error {
 		return utils.BadRequest(c, "invalid request body")
 	}
 
-	if err := h.adminService.OverrideUserFeature(c.Context(), actorID, targetUserID, req.FeatureKey, req.Value, req.Note, req.DurationDays); err != nil {
+	if err := h.adminService.OverrideUserFeature(c.Context(), actorID, targetUserID, req.FeatureKey, req.Value, req.Note, req.DurationDays, auditMetaFromCtx(c)); err != nil {
 		return utils.InternalError(c, err.Error())
 	}
 
@@ -210,11 +257,28 @@ func (h *AdminHandler) DeleteUserOverride(c *fiber.Ctx) error {
 		return utils.BadRequest(c, "missing feature key")
 	}
 
-	if err := h.adminService.DeleteUserOverride(c.Context(), actorID, targetUserID, featureKey); err != nil {
+	if err := h.adminService.DeleteUserOverride(c.Context(), actorID, targetUserID, featureKey, auditMetaFromCtx(c)); err != nil {
 		return utils.InternalError(c, err.Error())
 	}
 
 	return utils.Success(c, fiber.Map{"message": "user feature override deleted successfully"})
+}
+
+// DeleteUser handles DELETE /api/v1/admin/users/:id
+func (h *AdminHandler) DeleteUser(c *fiber.Ctx) error {
+	actorIDStr, _ := c.Locals("user_id").(string)
+	actorID, _ := uuid.Parse(actorIDStr)
+
+	targetUserID, err := uuid.Parse(c.Params("id"))
+	if err != nil {
+		return utils.BadRequest(c, "invalid user id")
+	}
+
+	if err := h.adminService.DeleteUser(c.Context(), actorID, targetUserID, auditMetaFromCtx(c)); err != nil {
+		return utils.InternalError(c, err.Error())
+	}
+
+	return utils.Success(c, fiber.Map{"message": "user deleted successfully"})
 }
 
 // GetGlobalOverview handles GET /api/v1/admin/analytics/overview
@@ -250,4 +314,22 @@ func (h *AdminHandler) GetAuditLogs(c *fiber.Ctx) error {
 		Total:      total,
 		TotalPages: totalPages,
 	})
+}
+
+// GetAuditLog handles GET /api/v1/admin/audit-logs/:id
+func (h *AdminHandler) GetAuditLog(c *fiber.Ctx) error {
+	id, err := uuid.Parse(c.Params("id"))
+	if err != nil {
+		return utils.BadRequest(c, "invalid audit log id")
+	}
+
+	log, err := h.adminService.GetAuditLog(c.Context(), id)
+	if err != nil {
+		return utils.InternalError(c, err.Error())
+	}
+	if log == nil {
+		return utils.NotFound(c, "audit log not found")
+	}
+
+	return utils.Success(c, log)
 }

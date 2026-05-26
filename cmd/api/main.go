@@ -65,12 +65,12 @@ func main() {
 	authService := service.NewAuthService(cfg, dbPool, userRepo, subRepo, planRepo)
 	planService := service.NewPlanService(planRepo)
 	dnsService := service.NewDNSService()
-	domainService := service.NewDomainService(domainRepo, dnsService)
-	apiKeyService := service.NewAPIKeyService(apiKeyRepo, domainRepo)
-	quotaService := service.NewQuotaService(redisClient, subRepo, planRepo)
-	webhookService := service.NewWebhookService(webhookRepo, asynqClient)
+	domainService := service.NewDomainService(domainRepo, planRepo, subRepo, userRepo, dnsService)
+	apiKeyService := service.NewAPIKeyService(apiKeyRepo, domainRepo, planRepo, subRepo, userRepo)
+	quotaService := service.NewQuotaService(redisClient, subRepo, planRepo, userRepo)
+	webhookService := service.NewWebhookService(webhookRepo, asynqClient, planRepo, subRepo, userRepo)
 	trackingService := service.NewTrackingService(emailRepo, webhookService)
-	featureChecker := service.NewFeatureCheckerService(redisClient, subRepo, planRepo)
+	featureChecker := service.NewFeatureCheckerService(redisClient, subRepo, planRepo, userRepo)
 	emailService := service.NewEmailService(emailRepo, domainRepo, suppressionRepo, quotaService, asynqClient, cfg, featureChecker, trackingService)
 	analyticsService := service.NewAnalyticsService(emailRepo)
 	adminService := service.NewAdminService(userRepo, planRepo, subRepo, auditLogRepo)
@@ -153,4 +153,3 @@ func main() {
 
 	log.Println("API server shut down successfully.")
 }
-

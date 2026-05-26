@@ -13,6 +13,7 @@ import (
 
 type PlanRepository interface {
 	GetAll(ctx context.Context) ([]*models.Plan, error)
+	GetAllAdmin(ctx context.Context) ([]*models.Plan, error)
 	GetByID(ctx context.Context, id uuid.UUID) (*models.Plan, error)
 	GetBySlug(ctx context.Context, slug string) (*models.Plan, error)
 	GetFeatures(ctx context.Context, planID uuid.UUID) ([]string, error)
@@ -65,6 +66,47 @@ func (r *postgresPlanRepository) GetAll(ctx context.Context) ([]*models.Plan, er
 		features, err := r.GetFeatures(ctx, p.ID)
 		if err != nil {
 			return nil, fmt.Errorf("get plan features for %s: %w", p.Slug, err)
+		}
+		p.Features = features
+	}
+
+	return plans, nil
+}
+
+func (r *postgresPlanRepository) GetAllAdmin(ctx context.Context) ([]*models.Plan, error) {
+	query := `
+		SELECT id, name, slug, COALESCE(description, ''), monthly_email_limit, daily_email_limit, rate_per_minute,
+		       max_domains, max_api_keys, max_webhooks, log_retention_days, price_monthly_idr,
+		       price_yearly_idr, overage_per_1k_idr, is_public, is_active, sort_order, COALESCE(badge_text, ''), COALESCE(badge_color, ''), created_at, updated_at
+		FROM plans
+		ORDER BY sort_order ASC
+	`
+	rows, err := r.db.Query(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("query all plans admin: %w", err)
+	}
+	defer rows.Close()
+
+	var plans []*models.Plan
+	for rows.Next() {
+		var p models.Plan
+		err := rows.Scan(
+			&p.ID, &p.Name, &p.Slug, &p.Description, &p.MonthlyEmailLimit, &p.DailyEmailLimit, &p.RatePerMinute,
+			&p.MaxDomains, &p.MaxAPIKeys, &p.MaxWebhooks, &p.LogRetentionDays, &p.PriceMonthlyIDR,
+			&p.PriceYearlyIDR, &p.OveragePer1kIDR, &p.IsPublic, &p.IsActive, &p.SortOrder, &p.BadgeText, &p.BadgeColor,
+			&p.CreatedAt, &p.UpdatedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("scan plan admin: %w", err)
+		}
+		plans = append(plans, &p)
+	}
+
+	// Load features for each plan
+	for _, p := range plans {
+		features, err := r.GetFeatures(ctx, p.ID)
+		if err != nil {
+			return nil, fmt.Errorf("get plan features admin for %s: %w", p.Slug, err)
 		}
 		p.Features = features
 	}

@@ -19,7 +19,7 @@ type AuthService interface {
 	Register(ctx context.Context, email, password, fullName string) (*models.User, error)
 	Login(ctx context.Context, email, password string) (string, *models.User, error)
 	GetProfile(ctx context.Context, id uuid.UUID) (*models.User, error)
-	UpdateProfile(ctx context.Context, id uuid.UUID, fullName, companyName string) (*models.User, error)
+	UpdateProfile(ctx context.Context, id uuid.UUID, fullName, companyName, email string) (*models.User, error)
 	ChangePassword(ctx context.Context, id uuid.UUID, oldPassword, newPassword string) error
 }
 
@@ -130,7 +130,14 @@ func (s *authService) Register(ctx context.Context, email, password, fullName st
 	}
 
 	// Fetch fresh complete user structure (with join info)
-	return s.userRepo.GetByID(ctx, userID)
+	freshUser, errGet := s.userRepo.GetByID(ctx, userID)
+	if errGet == nil && freshUser != nil {
+		sub, errSub := s.subRepo.GetByUserID(ctx, userID)
+		if errSub == nil && sub != nil {
+			freshUser.Subscription = sub
+		}
+	}
+	return freshUser, errGet
 }
 
 func (s *authService) Login(ctx context.Context, email, password string) (string, *models.User, error) {
@@ -161,6 +168,12 @@ func (s *authService) Login(ctx context.Context, email, password string) (string
 	// Update last login
 	_ = s.userRepo.UpdateLastLogin(ctx, user.ID)
 
+	// Fetch active subscription
+	sub, errSub := s.subRepo.GetByUserID(ctx, user.ID)
+	if errSub == nil && sub != nil {
+		user.Subscription = sub
+	}
+
 	return token, user, nil
 }
 
@@ -172,16 +185,32 @@ func (s *authService) GetProfile(ctx context.Context, id uuid.UUID) (*models.Use
 	if user == nil {
 		return nil, errors.New("user not found")
 	}
+
+	// Fetch active subscription
+	sub, errSub := s.subRepo.GetByUserID(ctx, id)
+	if errSub == nil && sub != nil {
+		user.Subscription = sub
+	}
+
 	return user, nil
 }
 
-func (s *authService) UpdateProfile(ctx context.Context, id uuid.UUID, fullName, companyName string) (*models.User, error) {
+func (s *authService) UpdateProfile(ctx context.Context, id uuid.UUID, fullName, companyName, email string) (*models.User, error) {
 	user, err := s.userRepo.GetByID(ctx, id)
 	if err != nil {
 		return nil, fmt.Errorf("get user for update: %w", err)
 	}
 	if user == nil {
 		return nil, errors.New("user not found")
+	}
+
+	// Verify email uniqueness if it's being changed
+	if email != user.Email {
+		existing, err := s.userRepo.GetByEmail(ctx, email)
+		if err == nil && existing != nil {
+			return nil, errors.New("email sudah terdaftar pada akun lain")
+		}
+		user.Email = email
 	}
 
 	user.FullName = fullName
@@ -196,7 +225,14 @@ func (s *authService) UpdateProfile(ctx context.Context, id uuid.UUID, fullName,
 		return nil, fmt.Errorf("update user profile: %w", err)
 	}
 
-	return s.userRepo.GetByID(ctx, id)
+	updatedUser, err := s.userRepo.GetByID(ctx, id)
+	if err == nil && updatedUser != nil {
+		sub, errSub := s.subRepo.GetByUserID(ctx, id)
+		if errSub == nil && sub != nil {
+			updatedUser.Subscription = sub
+		}
+	}
+	return updatedUser, err
 }
 
 func (s *authService) ChangePassword(ctx context.Context, id uuid.UUID, oldPassword, newPassword string) error {

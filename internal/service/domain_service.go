@@ -25,12 +25,24 @@ type DomainService interface {
 
 type domainService struct {
 	domainRepo repository.DomainRepository
+	planRepo   repository.PlanRepository
+	subRepo    repository.SubscriptionRepository
+	userRepo   repository.UserRepository
 	dnsService DNSService
 }
 
-func NewDomainService(domainRepo repository.DomainRepository, dnsService DNSService) DomainService {
+func NewDomainService(
+	domainRepo repository.DomainRepository,
+	planRepo repository.PlanRepository,
+	subRepo repository.SubscriptionRepository,
+	userRepo repository.UserRepository,
+	dnsService DNSService,
+) DomainService {
 	return &domainService{
 		domainRepo: domainRepo,
+		planRepo:   planRepo,
+		subRepo:    subRepo,
+		userRepo:   userRepo,
 		dnsService: dnsService,
 	}
 }
@@ -44,6 +56,43 @@ func (s *domainService) AddDomain(ctx context.Context, userID uuid.UUID, domainN
 		return nil, nil, errors.New("invalid domain name format")
 	}
 
+	// Super admin bypasses all plan quota checks.
+	user, err := s.userRepo.GetByID(ctx, userID)
+	if err == nil && user != nil && user.Role == models.RoleSuperAdmin {
+		return s.addDomainWithoutQuotaCheck(ctx, userID, domainName)
+	}
+
+	// Enforce plan domain quota before creating a new domain.
+	sub, err := s.subRepo.GetByUserID(ctx, userID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("get user subscription: %w", err)
+	}
+	if sub == nil || sub.Status != models.SubscriptionActive {
+		return nil, nil, errors.New("user does not have an active subscription")
+	}
+
+	plan, err := s.planRepo.GetByID(ctx, sub.PlanID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("get plan details: %w", err)
+	}
+	if plan == nil {
+		return nil, nil, errors.New("plan not found")
+	}
+
+	if plan.MaxDomains != -1 {
+		existingDomains, err := s.domainRepo.ListByUserID(ctx, userID)
+		if err != nil {
+			return nil, nil, fmt.Errorf("count user domains: %w", err)
+		}
+		if len(existingDomains) >= plan.MaxDomains {
+			return nil, nil, fmt.Errorf("paket %s hanya mendukung maksimal %d domain. silakan upgrade untuk menambah domain", plan.Name, plan.MaxDomains)
+		}
+	}
+
+	return s.addDomainWithoutQuotaCheck(ctx, userID, domainName)
+}
+
+func (s *domainService) addDomainWithoutQuotaCheck(ctx context.Context, userID uuid.UUID, domainName string) (*models.Domain, *DNSRecords, error) {
 	// Check if already registered
 	existing, err := s.domainRepo.GetByDomainName(ctx, userID, domainName)
 	if err != nil {

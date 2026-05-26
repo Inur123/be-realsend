@@ -15,6 +15,8 @@ type AuditLog struct {
 	TargetID   *uuid.UUID `json:"target_id" db:"target_id"`
 	Details    []byte     `json:"details" db:"details"` // JSONB details
 	IPAddress  string     `json:"ip_address" db:"ip_address"`
+	UserAgent  string     `json:"user_agent,omitempty" db:"user_agent"`
+	Location   string     `json:"location,omitempty" db:"location"`
 	CreatedAt  time.Time  `json:"created_at" db:"created_at"`
 
 	// Presentational helper fields

@@ -39,7 +39,9 @@ type User struct {
 	UpdatedAt     time.Time    `json:"updated_at" db:"updated_at"`
 
 	// Joined fields
-	CompanyNameStr string `json:"company_name_str,omitempty"`
-	PlanName       string `json:"plan_name,omitempty"`
-	PlanSlug       string `json:"plan_slug,omitempty"`
+	CompanyNameStr string              `json:"company_name_str,omitempty"`
+	PlanName       string              `json:"plan_name,omitempty"`
+	PlanSlug       string              `json:"plan_slug,omitempty"`
+	Subscription   *Subscription       `json:"subscription,omitempty"`
+	Overrides      []*UserPlanOverride `json:"overrides,omitempty"`
 }

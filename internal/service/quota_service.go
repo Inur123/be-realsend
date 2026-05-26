@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
+	"github.com/realsend/be-realsend/internal/models"
 	"github.com/realsend/be-realsend/internal/repository"
 )
 
@@ -19,17 +20,30 @@ type quotaService struct {
 	redisClient *redis.Client
 	subRepo     repository.SubscriptionRepository
 	planRepo    repository.PlanRepository
+	userRepo    repository.UserRepository
 }
 
-func NewQuotaService(redisClient *redis.Client, subRepo repository.SubscriptionRepository, planRepo repository.PlanRepository) QuotaService {
+func NewQuotaService(
+	redisClient *redis.Client,
+	subRepo repository.SubscriptionRepository,
+	planRepo repository.PlanRepository,
+	userRepo repository.UserRepository,
+) QuotaService {
 	return &quotaService{
 		redisClient: redisClient,
 		subRepo:     subRepo,
 		planRepo:    planRepo,
+		userRepo:    userRepo,
 	}
 }
 
 func (s *quotaService) CheckAndIncrement(ctx context.Context, userID uuid.UUID) (bool, error) {
+	// 0. Check if user is super_admin (bypasses all quota checks)
+	user, err := s.userRepo.GetByID(ctx, userID)
+	if err == nil && user != nil && user.Role == models.RoleSuperAdmin {
+		return true, nil
+	}
+
 	// 1. Get active subscription
 	sub, err := s.subRepo.GetByUserID(ctx, userID)
 	if err != nil {

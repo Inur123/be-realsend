@@ -49,7 +49,7 @@ func (h *WebhookHandler) CreateWebhook(c *fiber.Ctx) error {
 
 	webhook, err := h.webhookService.CreateWebhook(c.Context(), userID, req.URL, req.Events)
 	if err != nil {
-		return utils.InternalError(c, err.Error())
+		return utils.Conflict(c, err.Error())
 	}
 
 	return utils.SuccessCreated(c, webhook)

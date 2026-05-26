@@ -41,13 +41,25 @@ type WebhookService interface {
 type webhookService struct {
 	webhookRepo repository.WebhookRepository
 	asynqClient *asynq.Client
+	planRepo    repository.PlanRepository
+	subRepo     repository.SubscriptionRepository
+	userRepo    repository.UserRepository
 }
 
 // NewWebhookService creates a new WebhookService.
-func NewWebhookService(webhookRepo repository.WebhookRepository, asynqClient *asynq.Client) WebhookService {
+func NewWebhookService(
+	webhookRepo repository.WebhookRepository,
+	asynqClient *asynq.Client,
+	planRepo repository.PlanRepository,
+	subRepo repository.SubscriptionRepository,
+	userRepo repository.UserRepository,
+) WebhookService {
 	return &webhookService{
 		webhookRepo: webhookRepo,
 		asynqClient: asynqClient,
+		planRepo:    planRepo,
+		subRepo:     subRepo,
+		userRepo:    userRepo,
 	}
 }
 
@@ -68,6 +80,42 @@ func SignPayload(secret string, payload []byte) string {
 }
 
 func (s *webhookService) CreateWebhook(ctx context.Context, userID uuid.UUID, url string, events []string) (*models.Webhook, error) {
+	// Super admin bypasses all plan quota checks.
+	user, err := s.userRepo.GetByID(ctx, userID)
+	if err == nil && user != nil && user.Role == models.RoleSuperAdmin {
+		return s.createWebhookWithoutQuotaCheck(ctx, userID, url, events)
+	}
+
+	sub, err := s.subRepo.GetByUserID(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("get user subscription: %w", err)
+	}
+	if sub == nil || sub.Status != models.SubscriptionActive {
+		return nil, fmt.Errorf("user does not have an active subscription")
+	}
+
+	plan, err := s.planRepo.GetByID(ctx, sub.PlanID)
+	if err != nil {
+		return nil, fmt.Errorf("get plan details: %w", err)
+	}
+	if plan == nil {
+		return nil, fmt.Errorf("plan not found")
+	}
+
+	if plan.MaxWebhooks != -1 {
+		webhooks, err := s.webhookRepo.ListByUserID(ctx, userID)
+		if err != nil {
+			return nil, fmt.Errorf("count webhooks: %w", err)
+		}
+		if len(webhooks) >= plan.MaxWebhooks {
+			return nil, fmt.Errorf("paket %s hanya mendukung maksimal %d webhook. silakan upgrade untuk menambah webhook", plan.Name, plan.MaxWebhooks)
+		}
+	}
+
+	return s.createWebhookWithoutQuotaCheck(ctx, userID, url, events)
+}
+
+func (s *webhookService) createWebhookWithoutQuotaCheck(ctx context.Context, userID uuid.UUID, url string, events []string) (*models.Webhook, error) {
 	secret, err := GenerateWebhookSecret()
 	if err != nil {
 		return nil, fmt.Errorf("generate webhook secret: %w", err)

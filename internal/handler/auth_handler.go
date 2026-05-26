@@ -29,6 +29,7 @@ type loginRequest struct {
 type updateProfileRequest struct {
 	FullName    string `json:"full_name" validate:"required,min=2,max=100"`
 	CompanyName string `json:"company_name" validate:"max=100"`
+	Email       string `json:"email" validate:"required,email"`
 }
 
 type changePasswordRequest struct {
@@ -118,7 +119,7 @@ func (h *AuthHandler) UpdateProfile(c *fiber.Ctx) error {
 		return utils.UnprocessableEntity(c, err.Error())
 	}
 
-	user, err := h.authService.UpdateProfile(c.Context(), userID, req.FullName, req.CompanyName)
+	user, err := h.authService.UpdateProfile(c.Context(), userID, req.FullName, req.CompanyName, req.Email)
 	if err != nil {
 		return utils.InternalError(c, err.Error())
 	}

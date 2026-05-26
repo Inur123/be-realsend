@@ -23,6 +23,7 @@ type UserRepository interface {
 	ListAll(ctx context.Context, limit, offset int, search string) ([]*models.User, int64, error)
 	UpdateStatus(ctx context.Context, id uuid.UUID, status models.UserStatus) error
 	UpdateRole(ctx context.Context, id uuid.UUID, role models.UserRole) error
+	Delete(ctx context.Context, id uuid.UUID) error
 }
 
 type postgresUserRepository struct {
@@ -321,6 +322,12 @@ func (r *postgresUserRepository) UpdateStatus(ctx context.Context, id uuid.UUID,
 func (r *postgresUserRepository) UpdateRole(ctx context.Context, id uuid.UUID, role models.UserRole) error {
 	query := "UPDATE users SET role = $1, updated_at = NOW() WHERE id = $2"
 	_, err := r.db.Exec(ctx, query, role, id)
+	return err
+}
+
+func (r *postgresUserRepository) Delete(ctx context.Context, id uuid.UUID) error {
+	query := "DELETE FROM users WHERE id = $1"
+	_, err := r.db.Exec(ctx, query, id)
 	return err
 }
 

@@ -1,0 +1,5 @@
+ALTER TABLE audit_logs
+    ADD COLUMN IF NOT EXISTS user_agent TEXT;
+
+ALTER TABLE audit_logs
+    ADD COLUMN IF NOT EXISTS location VARCHAR(255);

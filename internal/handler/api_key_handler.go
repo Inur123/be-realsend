@@ -52,7 +52,7 @@ func (h *APIKeyHandler) CreateKey(c *fiber.Ctx) error {
 
 	rawKey, keyMeta, err := h.keyService.CreateKey(c.Context(), userID, req.Name, parsedDomainID)
 	if err != nil {
-		return utils.BadRequest(c, err.Error())
+		return utils.Conflict(c, err.Error())
 	}
 
 	// Important: Return BOTH rawKey (the secret revealed exactly once) and stored keyMeta
@@ -80,6 +80,35 @@ func (h *APIKeyHandler) ListKeys(c *fiber.Ctx) error {
 	}
 
 	return utils.Success(c, keys)
+}
+
+// GetKey returns a single API key metadata record.
+func (h *APIKeyHandler) GetKey(c *fiber.Ctx) error {
+	userIDStr, ok := c.Locals("user_id").(string)
+	if !ok {
+		return utils.Unauthorized(c, "unauthorized")
+	}
+
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		return utils.BadRequest(c, "invalid user id")
+	}
+
+	idStr := c.Params("id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		return utils.BadRequest(c, "invalid api key id")
+	}
+
+	key, err := h.keyService.GetKey(c.Context(), id)
+	if err != nil {
+		return utils.NotFound(c, err.Error())
+	}
+	if key.UserID != userID {
+		return utils.Forbidden(c, "you do not have permission to access this api key")
+	}
+
+	return utils.Success(c, key)
 }
 
 // RevokeKey deletes/invalidates an existing key.

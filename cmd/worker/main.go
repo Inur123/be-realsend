@@ -32,6 +32,9 @@ func main() {
 	// 3. Initialize repositories needed by the worker
 	emailRepo := repository.NewEmailRepository(dbPool)
 	domainRepo := repository.NewDomainRepository(dbPool)
+	planRepo := repository.NewPlanRepository(dbPool)
+	subRepo := repository.NewSubscriptionRepository(dbPool)
+	userRepo := repository.NewUserRepository(dbPool)
 	webhookRepo := repository.NewWebhookRepository(dbPool)
 
 	// 3b. Initialize Asynq Client (for webhook dispatch)
@@ -43,7 +46,7 @@ func main() {
 	defer asynqClient.Close()
 
 	// 3c. Initialize services
-	webhookSvc := service.NewWebhookService(webhookRepo, asynqClient)
+	webhookSvc := service.NewWebhookService(webhookRepo, asynqClient, planRepo, subRepo, userRepo)
 
 	// 4. Create Asynq server
 	srv := asynq.NewServer(

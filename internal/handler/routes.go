@@ -2,11 +2,12 @@ package handler
 
 import (
 	"github.com/gofiber/fiber/v2"
-	"github.com/redis/go-redis/v9"
 	"github.com/realsend/be-realsend/internal/config"
 	"github.com/realsend/be-realsend/internal/middleware"
 	"github.com/realsend/be-realsend/internal/repository"
+	"github.com/redis/go-redis/v9"
 )
+
 // RegisterRoutes sets up all routes for the API server.
 func RegisterRoutes(
 	app *fiber.App,
@@ -65,6 +66,7 @@ func RegisterRoutes(
 	apiKeys := api.Group("/api-keys", middleware.Protected(cfg))
 	apiKeys.Post("/", apiKeyHandler.CreateKey)
 	apiKeys.Get("/", apiKeyHandler.ListKeys)
+	apiKeys.Get("/:id", apiKeyHandler.GetKey)
 	apiKeys.Delete("/:id", apiKeyHandler.RevokeKey)
 
 	// Email sending routes (protected via API Key auth)
@@ -97,6 +99,7 @@ func RegisterRoutes(
 	// Admin routes (protected via JWT + role check)
 	admin := api.Group("/admin", middleware.Protected(cfg), middleware.RequireRole("admin", "super_admin"))
 	// Plans CRUD
+	admin.Get("/plans", adminHandler.ListPlans)
 	admin.Post("/plans", adminHandler.CreatePlan)
 	admin.Put("/plans/:id", adminHandler.UpdatePlan)
 	admin.Delete("/plans/:id", adminHandler.DeletePlan)
@@ -105,6 +108,7 @@ func RegisterRoutes(
 	admin.Put("/users/:id/suspend", adminHandler.SuspendUser)
 	admin.Put("/users/:id/unsuspend", adminHandler.UnsuspendUser)
 	admin.Put("/users/:id/role", adminHandler.ChangeUserRole)
+	admin.Delete("/users/:id", adminHandler.DeleteUser)
 	// User overrides
 	admin.Post("/users/:id/override", adminHandler.OverrideUserFeature)
 	admin.Delete("/users/:id/override/:featureKey", adminHandler.DeleteUserOverride)
@@ -112,4 +116,5 @@ func RegisterRoutes(
 	admin.Get("/analytics/overview", adminHandler.GetGlobalOverview)
 	// Audit logs
 	admin.Get("/audit-logs", adminHandler.GetAuditLogs)
+	admin.Get("/audit-logs/:id", adminHandler.GetAuditLog)
 }

@@ -25,16 +25,64 @@ type APIKeyService interface {
 type apiKeyService struct {
 	keyRepo    repository.APIKeyRepository
 	domainRepo repository.DomainRepository
+	planRepo   repository.PlanRepository
+	subRepo    repository.SubscriptionRepository
+	userRepo   repository.UserRepository
 }
 
-func NewAPIKeyService(keyRepo repository.APIKeyRepository, domainRepo repository.DomainRepository) APIKeyService {
+func NewAPIKeyService(
+	keyRepo repository.APIKeyRepository,
+	domainRepo repository.DomainRepository,
+	planRepo repository.PlanRepository,
+	subRepo repository.SubscriptionRepository,
+	userRepo repository.UserRepository,
+) APIKeyService {
 	return &apiKeyService{
 		keyRepo:    keyRepo,
 		domainRepo: domainRepo,
+		planRepo:   planRepo,
+		subRepo:    subRepo,
+		userRepo:   userRepo,
 	}
 }
 
 func (s *apiKeyService) CreateKey(ctx context.Context, userID uuid.UUID, name string, domainID *uuid.UUID) (string, *models.APIKey, error) {
+	// Super admin bypasses all plan quota checks.
+	user, err := s.userRepo.GetByID(ctx, userID)
+	if err == nil && user != nil && user.Role == models.RoleSuperAdmin {
+		return s.createKeyWithoutQuotaCheck(ctx, userID, name, domainID)
+	}
+
+	sub, err := s.subRepo.GetByUserID(ctx, userID)
+	if err != nil {
+		return "", nil, fmt.Errorf("get user subscription: %w", err)
+	}
+	if sub == nil || sub.Status != models.SubscriptionActive {
+		return "", nil, errors.New("user does not have an active subscription")
+	}
+
+	plan, err := s.planRepo.GetByID(ctx, sub.PlanID)
+	if err != nil {
+		return "", nil, fmt.Errorf("get plan details: %w", err)
+	}
+	if plan == nil {
+		return "", nil, errors.New("plan not found")
+	}
+
+	if plan.MaxAPIKeys != -1 {
+		keys, err := s.keyRepo.ListByUserID(ctx, userID)
+		if err != nil {
+			return "", nil, fmt.Errorf("count api keys: %w", err)
+		}
+		if len(keys) >= plan.MaxAPIKeys {
+			return "", nil, fmt.Errorf("paket %s hanya mendukung maksimal %d api key. silakan upgrade untuk menambah api key", plan.Name, plan.MaxAPIKeys)
+		}
+	}
+
+	return s.createKeyWithoutQuotaCheck(ctx, userID, name, domainID)
+}
+
+func (s *apiKeyService) createKeyWithoutQuotaCheck(ctx context.Context, userID uuid.UUID, name string, domainID *uuid.UUID) (string, *models.APIKey, error) {
 	// Verify domain belongs to the user if domainID is provided
 	var nullDomainID uuid.NullUUID
 	if domainID != nil && *domainID != uuid.Nil {

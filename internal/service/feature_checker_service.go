@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
+	"github.com/realsend/be-realsend/internal/models"
 	"github.com/realsend/be-realsend/internal/repository"
 )
 
@@ -20,6 +21,7 @@ type featureCheckerService struct {
 	redisClient *redis.Client
 	subRepo     repository.SubscriptionRepository
 	planRepo    repository.PlanRepository
+	userRepo    repository.UserRepository
 }
 
 // NewFeatureCheckerService creates a new FeatureCheckerService.
@@ -27,11 +29,13 @@ func NewFeatureCheckerService(
 	redisClient *redis.Client,
 	subRepo repository.SubscriptionRepository,
 	planRepo repository.PlanRepository,
+	userRepo repository.UserRepository,
 ) FeatureCheckerService {
 	return &featureCheckerService{
 		redisClient: redisClient,
 		subRepo:     subRepo,
 		planRepo:    planRepo,
+		userRepo:    userRepo,
 	}
 }
 
@@ -39,6 +43,12 @@ func NewFeatureCheckerService(
 // Lookup order: Redis cache → plan_features table.
 // Admin overrides (user_plan_overrides) are handled at the repository layer in the future.
 func (s *featureCheckerService) HasFeature(ctx context.Context, userID uuid.UUID, featureKey string) (bool, error) {
+	// 0. Check if user is super_admin (bypasses all feature checks, has all features)
+	user, err := s.userRepo.GetByID(ctx, userID)
+	if err == nil && user != nil && user.Role == models.RoleSuperAdmin {
+		return true, nil
+	}
+
 	// 1. Try Redis cache first (TTL = 5 minutes)
 	cacheKey := fmt.Sprintf("feature:%s:%s", userID.String(), featureKey)
 	cached, err := s.redisClient.Get(ctx, cacheKey).Result()

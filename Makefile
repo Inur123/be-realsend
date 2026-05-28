@@ -63,3 +63,6 @@ db-drop:
 
 db-reset: db-drop db-create migrate-up
 	@echo "✅ Database reset complete!"
+
+update-payment-success:
+	@go run ./cmd/simulate_payment

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -47,6 +48,8 @@ type emailService struct {
 	emailRepo       repository.EmailRepository
 	domainRepo      repository.DomainRepository
 	suppressionRepo repository.SuppressionRepository
+	planRepo        repository.PlanRepository
+	subRepo         repository.SubscriptionRepository
 	quotaService    QuotaService
 	asynqClient     *asynq.Client
 	cfg             *config.Config
@@ -59,6 +62,8 @@ func NewEmailService(
 	emailRepo repository.EmailRepository,
 	domainRepo repository.DomainRepository,
 	suppressionRepo repository.SuppressionRepository,
+	planRepo repository.PlanRepository,
+	subRepo repository.SubscriptionRepository,
 	quotaService QuotaService,
 	asynqClient *asynq.Client,
 	cfg *config.Config,
@@ -69,6 +74,8 @@ func NewEmailService(
 		emailRepo:       emailRepo,
 		domainRepo:      domainRepo,
 		suppressionRepo: suppressionRepo,
+		planRepo:        planRepo,
+		subRepo:         subRepo,
 		quotaService:    quotaService,
 		asynqClient:     asynqClient,
 		cfg:             cfg,
@@ -95,6 +102,9 @@ func (s *emailService) SendEmail(ctx context.Context, userID uuid.UUID, apiKeyID
 	}
 	if domain.Status != models.DomainVerified {
 		return nil, fmt.Errorf("sender domain '%s' is not verified (status: %s). Verify DNS records first", senderDomain, domain.Status)
+	}
+	if err := s.ensureDomainWithinPlanLimit(ctx, userID, domain.ID); err != nil {
+		return nil, err
 	}
 
 	// 3. Check suppression list for the recipient
@@ -153,23 +163,23 @@ func (s *emailService) SendEmail(ctx context.Context, userID uuid.UUID, apiKeyID
 	// 7. Create email log entry with status=queued
 	now := time.Now()
 	emailLog := &models.EmailLog{
-		ID:          emailID,
-		UserID:      userID,
-		APIKeyID:    uuid.NullUUID{UUID: apiKeyID, Valid: true},
-		DomainID:    uuid.NullUUID{UUID: domain.ID, Valid: true},
-		FromAddress: req.From,
-		ToAddress:   req.To,
-		CCAddresses: req.CC,
+		ID:           emailID,
+		UserID:       userID,
+		APIKeyID:     uuid.NullUUID{UUID: apiKeyID, Valid: true},
+		DomainID:     uuid.NullUUID{UUID: domain.ID, Valid: true},
+		FromAddress:  req.From,
+		ToAddress:    req.To,
+		CCAddresses:  req.CC,
 		BCCAddresses: req.BCC,
-		Subject:     req.Subject,
-		ContentType: contentType,
-		Status:      models.StatusQueued,
-		BounceType:  models.BounceNone,
-		Tags:        req.Tags,
-		Metadata:    metadataBytes,
-		Headers:     headersBytes,
-		QueuedAt:    now,
-		CreatedAt:   now,
+		Subject:      req.Subject,
+		ContentType:  contentType,
+		Status:       models.StatusQueued,
+		BounceType:   models.BounceNone,
+		Tags:         req.Tags,
+		Metadata:     metadataBytes,
+		Headers:      headersBytes,
+		QueuedAt:     now,
+		CreatedAt:    now,
 	}
 
 	if err := s.emailRepo.Create(ctx, emailLog); err != nil {
@@ -192,6 +202,46 @@ func (s *emailService) SendEmail(ctx context.Context, userID uuid.UUID, apiKeyID
 	}
 
 	return emailLog, nil
+}
+
+func (s *emailService) ensureDomainWithinPlanLimit(ctx context.Context, userID uuid.UUID, domainID uuid.UUID) error {
+	sub, err := s.subRepo.GetByUserID(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("get user subscription: %w", err)
+	}
+	if sub == nil || sub.Status != models.SubscriptionActive {
+		return fmt.Errorf("user does not have an active subscription")
+	}
+
+	plan, err := s.planRepo.GetByID(ctx, sub.PlanID)
+	if err != nil {
+		return fmt.Errorf("get plan details: %w", err)
+	}
+	if plan == nil {
+		return fmt.Errorf("plan not found")
+	}
+	if plan.MaxDomains == -1 {
+		return nil
+	}
+
+	domains, err := s.domainRepo.ListByUserID(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("list user domains: %w", err)
+	}
+	sort.SliceStable(domains, func(i, j int) bool {
+		return domains[i].CreatedAt.Before(domains[j].CreatedAt)
+	})
+
+	for idx, d := range domains {
+		if d.ID == domainID {
+			if idx < plan.MaxDomains {
+				return nil
+			}
+			return fmt.Errorf("sender domain '%s' is outside your current %s plan limit (%d domain). Delete unused domains or upgrade to use this domain", d.DomainName, plan.Name, plan.MaxDomains)
+		}
+	}
+
+	return fmt.Errorf("sender domain is not available for your account")
 }
 
 func (s *emailService) GetEmail(ctx context.Context, id uuid.UUID, userID uuid.UUID) (*models.EmailLog, error) {

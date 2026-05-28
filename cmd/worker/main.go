@@ -68,7 +68,7 @@ func main() {
 	// 5. Create worker handlers
 	emailWorker := worker.NewEmailWorker(emailRepo, domainRepo, cfg, webhookSvc)
 	webhookWorker := worker.NewWebhookWorker(webhookRepo)
-	cleanupWorker := worker.NewCleanupWorker(emailRepo, subRepo)
+	cleanupWorker := worker.NewCleanupWorker(emailRepo, subRepo, planRepo)
 
 	// 5b. Start Asynq Scheduler for periodic tasks
 	scheduler := asynq.NewScheduler(

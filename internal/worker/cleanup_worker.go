@@ -15,13 +15,15 @@ const TaskDailyQuotaReset = "quota:daily_reset"
 type CleanupWorker struct {
 	emailRepo repository.EmailRepository
 	subRepo   repository.SubscriptionRepository
+	planRepo  repository.PlanRepository
 }
 
 // NewCleanupWorker creates a new CleanupWorker.
-func NewCleanupWorker(emailRepo repository.EmailRepository, subRepo repository.SubscriptionRepository) *CleanupWorker {
+func NewCleanupWorker(emailRepo repository.EmailRepository, subRepo repository.SubscriptionRepository, planRepo repository.PlanRepository) *CleanupWorker {
 	return &CleanupWorker{
 		emailRepo: emailRepo,
 		subRepo:   subRepo,
+		planRepo:  planRepo,
 	}
 }
 
@@ -37,13 +39,30 @@ func (w *CleanupWorker) ProcessTask(ctx context.Context, t *asynq.Task) error {
 	return nil
 }
 
-// ProcessQuotaResetTask resets PostgreSQL daily email counters to 0.
+// ProcessQuotaResetTask resets due quota windows and downgrades expired paid subscriptions.
 func (w *CleanupWorker) ProcessQuotaResetTask(ctx context.Context, t *asynq.Task) error {
-	log.Println("[CleanupWorker] Starting daily subscription quota reset in database...")
-	if err := w.subRepo.ResetDailyUsage(ctx); err != nil {
-		log.Printf("[CleanupWorker] Error during daily quota reset: %v", err)
+	log.Println("[CleanupWorker] Starting subscription quota/expiry maintenance...")
+	if err := w.subRepo.ResetDueUsage(ctx); err != nil {
+		log.Printf("[CleanupWorker] Error during due quota reset: %v", err)
 		return err
 	}
-	log.Println("[CleanupWorker] Daily subscription quota reset completed successfully.")
+
+	freePlan, err := w.planRepo.GetBySlug(ctx, "free")
+	if err != nil {
+		log.Printf("[CleanupWorker] Error loading free plan: %v", err)
+		return err
+	}
+	if freePlan == nil {
+		log.Println("[CleanupWorker] Free plan not found; skipping subscription expiry")
+		return nil
+	}
+
+	expiredCount, err := w.subRepo.ExpireEndedPaidSubscriptions(ctx, freePlan.ID)
+	if err != nil {
+		log.Printf("[CleanupWorker] Error expiring subscriptions: %v", err)
+		return err
+	}
+
+	log.Printf("[CleanupWorker] Subscription maintenance completed successfully; downgraded %d expired subscriptions", expiredCount)
 	return nil
 }

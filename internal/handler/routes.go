@@ -23,6 +23,7 @@ func RegisterRoutes(
 	webhookHandler *WebhookHandler,
 	analyticsHandler *AnalyticsHandler,
 	logHandler *LogHandler,
+	billingHandler *BillingHandler,
 	adminHandler *AdminHandler,
 ) {
 	// CORS Middleware
@@ -93,6 +94,20 @@ func RegisterRoutes(
 	emailLogs := api.Group("/email-logs", middleware.Protected(cfg))
 	emailLogs.Get("/", logHandler.ListLogs)
 	emailLogs.Get("/:id", logHandler.GetLog)
+
+	// Billing routes (Public)
+	api.Post("/billing/midtrans/notification", billingHandler.HandleNotification)
+
+	// Billing routes (Protected)
+	billing := api.Group("/billing", middleware.Protected(cfg))
+	billing.Get("/current", billingHandler.GetOverview)
+	billing.Get("/invoices", billingHandler.GetPaymentHistory)
+	billing.Post("/checkout", billingHandler.CreateTransaction)
+	billing.Post("/sync/:order_id", billingHandler.SyncPaymentStatus)
+	billing.Get("/client-key", func(c *fiber.Ctx) error {
+		c.Locals("midtrans_client_key", cfg.MidtransClientKey)
+		return billingHandler.GetClientKey(c)
+	})
 
 	// Tracking routes (public at root)
 	app.Get("/t/o/:id", trackingHandler.TrackOpen)

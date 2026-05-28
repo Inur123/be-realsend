@@ -47,6 +47,15 @@ type Config struct {
 
 	// Tracking
 	TrackingBaseURL string
+
+	// Midtrans
+	MidtransServerKey       string
+	MidtransClientKey       string
+	MidtransIsProduction    bool
+	MidtransNotificationURL string
+	MidtransFinishURL       string
+	MidtransUnfinishURL     string
+	MidtransErrorURL        string
 }
 
 // Load reads configuration from .env file and environment variables.
@@ -93,6 +102,15 @@ func Load() *Config {
 
 		// Tracking
 		TrackingBaseURL: getEnv("TRACKING_BASE_URL", "http://localhost:3001"),
+
+		// Midtrans
+		MidtransServerKey:       getEnv("MIDTRANS_SERVER_KEY", ""),
+		MidtransClientKey:       getEnv("MIDTRANS_CLIENT_KEY", ""),
+		MidtransIsProduction:    getEnvBool("MIDTRANS_IS_PRODUCTION", false),
+		MidtransNotificationURL: getEnv("MIDTRANS_NOTIFICATION_URL", ""),
+		MidtransFinishURL:       getEnv("MIDTRANS_FINISH_URL", ""),
+		MidtransUnfinishURL:     getEnv("MIDTRANS_UNFINISH_URL", ""),
+		MidtransErrorURL:        getEnv("MIDTRANS_ERROR_URL", ""),
 	}
 }
 
@@ -121,6 +139,15 @@ func getEnvInt(key string, fallback int) int {
 	if val, ok := os.LookupEnv(key); ok {
 		if i, err := strconv.Atoi(val); err == nil {
 			return i
+		}
+	}
+	return fallback
+}
+
+func getEnvBool(key string, fallback bool) bool {
+	if val, ok := os.LookupEnv(key); ok {
+		if b, err := strconv.ParseBool(val); err == nil {
+			return b
 		}
 	}
 	return fallback

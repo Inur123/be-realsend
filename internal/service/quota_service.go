@@ -6,9 +6,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/redis/go-redis/v9"
 	"github.com/realsend/be-realsend/internal/models"
 	"github.com/realsend/be-realsend/internal/repository"
+	"github.com/redis/go-redis/v9"
 )
 
 type QuotaService interface {
@@ -63,8 +63,9 @@ func (s *quotaService) CheckAndIncrement(ctx context.Context, userID uuid.UUID) 
 	}
 
 	now := time.Now()
-	dayKey := fmt.Sprintf("quota:%s:day:%s", userID.String(), now.Format("20060102"))
-	monthKey := fmt.Sprintf("quota:%s:month:%s", userID.String(), now.Format("200601"))
+	quotaPeriod := sub.StartedAt.Format("20060102150405")
+	dayKey := fmt.Sprintf("quota:%s:%s:day:%s", userID.String(), quotaPeriod, now.Format("20060102"))
+	monthKey := fmt.Sprintf("quota:%s:%s:month:%s", userID.String(), quotaPeriod, now.Format("200601"))
 
 	// 3. Check and increment Redis day counter
 	dayCount, err := s.redisClient.Get(ctx, dayKey).Int()
@@ -85,7 +86,9 @@ func (s *quotaService) CheckAndIncrement(ctx context.Context, userID uuid.UUID) 
 
 	// If monthly limit reached (if limit is not -1 meaning unlimited)
 	if plan.MonthlyEmailLimit != -1 && monthCount >= plan.MonthlyEmailLimit {
-		return false, nil
+		if plan.OveragePer1kIDR <= 0 {
+			return false, nil
+		}
 	}
 
 	// 5. Quota check passed, increment counters

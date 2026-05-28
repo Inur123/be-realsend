@@ -61,6 +61,7 @@ func main() {
 	suppressionRepo := repository.NewSuppressionRepository(dbPool)
 	webhookRepo := repository.NewWebhookRepository(dbPool)
 	auditLogRepo := repository.NewAuditLogRepository(dbPool)
+	paymentRepo := repository.NewPaymentRepository(dbPool)
 
 	// 6. Initialize services
 	authService := service.NewAuthService(cfg, dbPool, userRepo, subRepo, planRepo)
@@ -72,9 +73,10 @@ func main() {
 	webhookService := service.NewWebhookService(webhookRepo, asynqClient, planRepo, subRepo, userRepo)
 	trackingService := service.NewTrackingService(emailRepo, webhookService)
 	featureChecker := service.NewFeatureCheckerService(redisClient, subRepo, planRepo, userRepo)
-	emailService := service.NewEmailService(emailRepo, domainRepo, suppressionRepo, quotaService, asynqClient, cfg, featureChecker, trackingService)
+	emailService := service.NewEmailService(emailRepo, domainRepo, suppressionRepo, planRepo, subRepo, quotaService, asynqClient, cfg, featureChecker, trackingService)
 	analyticsService := service.NewAnalyticsService(emailRepo)
 	adminService := service.NewAdminService(userRepo, planRepo, subRepo, auditLogRepo)
+	billingService := service.NewBillingService(cfg, dbPool, planRepo, subRepo, userRepo, paymentRepo)
 
 	// 7. Initialize handlers
 	authHandler := handler.NewAuthHandler(authService, auditLogRepo)
@@ -86,6 +88,7 @@ func main() {
 	webhookHandler := handler.NewWebhookHandler(webhookService, auditLogRepo)
 	analyticsHandler := handler.NewAnalyticsHandler(analyticsService)
 	logHandler := handler.NewLogHandler(emailRepo)
+	billingHandler := handler.NewBillingHandler(billingService)
 	adminHandler := handler.NewAdminHandler(adminService, analyticsService)
 
 	// 8. Setup Fiber App
@@ -115,6 +118,7 @@ func main() {
 		webhookHandler,
 		analyticsHandler,
 		logHandler,
+		billingHandler,
 		adminHandler,
 	)
 

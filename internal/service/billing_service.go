@@ -12,7 +12,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/midtrans/midtrans-go"
-	"github.com/midtrans/midtrans-go/coreapi"
 	"github.com/midtrans/midtrans-go/snap"
 	"github.com/realsend/be-realsend/internal/config"
 	"github.com/realsend/be-realsend/internal/models"
@@ -32,19 +31,82 @@ type CreateTransactionResponse struct {
 	OrderID     string `json:"order_id"`
 }
 
+// VANumber holds bank VA info from Midtrans notification.
+type VANumber struct {
+	Bank     string `json:"bank"`
+	VANumber string `json:"va_number"`
+}
+
 // MidtransNotification maps the JSON body Midtrans sends to our webhook.
 type MidtransNotification struct {
-	TransactionTime   string `json:"transaction_time"`
-	TransactionStatus string `json:"transaction_status"`
-	TransactionID     string `json:"transaction_id"`
-	StatusMessage     string `json:"status_message"`
-	StatusCode        string `json:"status_code"`
-	SignatureKey      string `json:"signature_key"`
-	PaymentType       string `json:"payment_type"`
-	OrderID           string `json:"order_id"`
-	GrossAmount       string `json:"gross_amount"`
-	FraudStatus       string `json:"fraud_status"`
-	Currency          string `json:"currency"`
+	TransactionTime   string     `json:"transaction_time"`
+	TransactionStatus string     `json:"transaction_status"`
+	TransactionID     string     `json:"transaction_id"`
+	StatusMessage     string     `json:"status_message"`
+	StatusCode        string     `json:"status_code"`
+	SignatureKey      string     `json:"signature_key"`
+	PaymentType       string     `json:"payment_type"`
+	OrderID           string     `json:"order_id"`
+	GrossAmount       string     `json:"gross_amount"`
+	FraudStatus       string     `json:"fraud_status"`
+	Currency          string     `json:"currency"`
+	VANumbers         []VANumber `json:"va_numbers"`
+	Bank              string     `json:"bank"`
+	Acquirer          string     `json:"acquirer"`
+	Issuer            string     `json:"issuer"`
+}
+
+// resolvePaymentChannel extracts the most specific channel label from a Midtrans notification.
+func resolvePaymentChannel(notif MidtransNotification) string {
+	switch notif.PaymentType {
+	case "bank_transfer", "permata", "echannel":
+		// Prefer the bank name from VANumbers list first
+		if len(notif.VANumbers) > 0 && notif.VANumbers[0].Bank != "" {
+			return "bank_transfer:" + strings.ToLower(notif.VANumbers[0].Bank)
+		}
+		if notif.Bank != "" {
+			return "bank_transfer:" + strings.ToLower(notif.Bank)
+		}
+		if notif.PaymentType == "permata" {
+			return "bank_transfer:permata"
+		}
+		if notif.PaymentType == "echannel" {
+			return "bank_transfer:mandiri"
+		}
+		return "bank_transfer"
+	case "credit_card":
+		if notif.Bank != "" {
+			return "credit_card:" + strings.ToLower(notif.Bank)
+		}
+		return "credit_card"
+	case "qris":
+		if notif.Acquirer != "" {
+			return "qris:" + strings.ToLower(notif.Acquirer)
+		}
+		return "qris"
+	case "gopay":
+		return "gopay"
+	case "shopeepay":
+		return "shopeepay"
+	case "dana":
+		return "dana"
+	case "ovo":
+		return "ovo"
+	case "akulaku":
+		return "akulaku"
+	case "kredivo":
+		return "kredivo"
+	case "cstore":
+		if notif.Bank != "" {
+			return "cstore:" + strings.ToLower(notif.Bank)
+		}
+		return "cstore"
+	default:
+		if notif.PaymentType != "" {
+			return notif.PaymentType
+		}
+		return "midtrans"
+	}
 }
 
 // BillingOverview returns billing overview for current user.
@@ -59,7 +121,6 @@ type BillingOverview struct {
 type BillingService interface {
 	CreateTransaction(ctx context.Context, userID uuid.UUID, req CreateTransactionRequest) (*CreateTransactionResponse, error)
 	HandleNotification(ctx context.Context, notif MidtransNotification) error
-	SyncPaymentStatus(ctx context.Context, userID uuid.UUID, orderID string) (*models.Payment, error)
 	GetPaymentHistory(ctx context.Context, userID uuid.UUID, page, perPage int) ([]*models.Payment, int64, error)
 	GetCurrentSubscription(ctx context.Context, userID uuid.UUID) (*SubscriptionInfo, error)
 	GetOverview(ctx context.Context, userID uuid.UUID) (*BillingOverview, error)
@@ -75,7 +136,6 @@ type billingService struct {
 	cfg         *config.Config
 	db          *pgxpool.Pool
 	snapClient  snap.Client
-	coreClient  coreapi.Client
 	planRepo    repository.PlanRepository
 	subRepo     repository.SubscriptionRepository
 	userRepo    repository.UserRepository
@@ -98,14 +158,14 @@ func NewBillingService(
 		env = midtrans.Sandbox
 	}
 	s.New(cfg.MidtransServerKey, env)
-	var c coreapi.Client
-	c.New(cfg.MidtransServerKey, env)
+	if httpClient, ok := s.HttpClient.(*midtrans.HttpClientImplementation); ok {
+		httpClient.Logger = &midtrans.LoggerImplementation{LogLevel: midtrans.NoLogging}
+	}
 
 	return &billingService{
 		cfg:         cfg,
 		db:          db,
 		snapClient:  s,
-		coreClient:  c,
 		planRepo:    planRepo,
 		subRepo:     subRepo,
 		userRepo:    userRepo,
@@ -254,7 +314,7 @@ func (s *billingService) CreateTransaction(ctx context.Context, userID uuid.UUID
 	}
 
 	// Update payment record to save the redirect URL
-	if err := s.paymentRepo.UpdateStatusByExternalID(ctx, nil, orderID, models.PaymentPending, nil, snapResp.RedirectURL); err != nil {
+	if err := s.paymentRepo.UpdateStatusByExternalID(ctx, nil, orderID, models.PaymentPending, nil, snapResp.RedirectURL, ""); err != nil {
 		log.Printf("Failed to save redirect URL to payment %s: %v", orderID, err)
 	}
 
@@ -317,12 +377,18 @@ func (s *billingService) HandleNotification(ctx context.Context, notif MidtransN
 	}
 
 	// 4. Update payment status
+	channel := resolvePaymentChannel(notif)
 	if payment.Status == models.PaymentPaid && newStatus == models.PaymentPaid {
+		if channel != "" && channel != "midtrans" && payment.PaymentMethod == "midtrans" {
+			if err := s.paymentRepo.UpdateStatusByExternalID(ctx, nil, notif.OrderID, newStatus, payment.PaidAt, "", channel); err != nil {
+				return fmt.Errorf("update duplicate paid payment channel: %w", err)
+			}
+		}
 		log.Printf("Payment %s already paid; skipping duplicate subscription activation", notif.OrderID)
 		return nil
 	}
 
-	if err := s.paymentRepo.UpdateStatusByExternalID(ctx, nil, notif.OrderID, newStatus, paidAt, ""); err != nil {
+	if err := s.paymentRepo.UpdateStatusByExternalID(ctx, nil, notif.OrderID, newStatus, paidAt, "", channel); err != nil {
 		return fmt.Errorf("update payment status: %w", err)
 	}
 
@@ -338,55 +404,6 @@ func (s *billingService) HandleNotification(ctx context.Context, notif MidtransN
 	}
 
 	return nil
-}
-
-func (s *billingService) SyncPaymentStatus(ctx context.Context, userID uuid.UUID, orderID string) (*models.Payment, error) {
-	payment, err := s.paymentRepo.GetByExternalID(ctx, orderID)
-	if err != nil {
-		return nil, fmt.Errorf("get payment by external id: %w", err)
-	}
-	if payment == nil {
-		return nil, fmt.Errorf("payment not found for order: %s", orderID)
-	}
-	if payment.UserID != userID {
-		return nil, fmt.Errorf("payment does not belong to current user")
-	}
-
-	statusResp, midErr := s.coreClient.CheckTransaction(orderID)
-	if midErr != nil {
-		return nil, fmt.Errorf("midtrans status check failed: %v", midErr)
-	}
-
-	signatureKey := statusResp.SignatureKey
-	if signatureKey == "" {
-		rawSignature := statusResp.OrderID + statusResp.StatusCode + statusResp.GrossAmount + s.cfg.MidtransServerKey
-		hash := sha512.Sum512([]byte(rawSignature))
-		signatureKey = hex.EncodeToString(hash[:])
-	}
-
-	notif := MidtransNotification{
-		TransactionTime:   statusResp.TransactionTime,
-		TransactionStatus: statusResp.TransactionStatus,
-		TransactionID:     statusResp.TransactionID,
-		StatusMessage:     statusResp.StatusMessage,
-		StatusCode:        statusResp.StatusCode,
-		SignatureKey:      signatureKey,
-		PaymentType:       statusResp.PaymentType,
-		OrderID:           statusResp.OrderID,
-		GrossAmount:       statusResp.GrossAmount,
-		FraudStatus:       statusResp.FraudStatus,
-		Currency:          statusResp.Currency,
-	}
-
-	if err := s.HandleNotification(ctx, notif); err != nil {
-		return nil, err
-	}
-
-	updatedPayment, err := s.paymentRepo.GetByExternalID(ctx, orderID)
-	if err != nil {
-		return nil, fmt.Errorf("get updated payment: %w", err)
-	}
-	return updatedPayment, nil
 }
 
 func (s *billingService) activateSubscription(ctx context.Context, payment *models.Payment) error {

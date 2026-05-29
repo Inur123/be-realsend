@@ -3,7 +3,6 @@ package handler
 import (
 	"log"
 	"strconv"
-	"strings"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
@@ -67,29 +66,6 @@ func (h *BillingHandler) HandleNotification(c *fiber.Ctx) error {
 	}
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"status": "ok"})
-}
-
-// SyncPaymentStatus checks Midtrans transaction status for a user's order and
-// applies the same activation flow as the webhook.
-func (h *BillingHandler) SyncPaymentStatus(c *fiber.Ctx) error {
-	userIDStr := c.Locals("user_id").(string)
-	userID, err := uuid.Parse(userIDStr)
-	if err != nil {
-		return utils.Unauthorized(c, "invalid user id")
-	}
-
-	orderID := strings.TrimSpace(c.Params("order_id"))
-	if orderID == "" {
-		return utils.BadRequest(c, "order_id is required")
-	}
-
-	payment, err := h.billingService.SyncPaymentStatus(c.Context(), userID, orderID)
-	if err != nil {
-		log.Printf("Error syncing payment status: %v", err)
-		return utils.InternalError(c, err.Error())
-	}
-
-	return utils.Success(c, payment)
 }
 
 // GetPaymentHistory returns paginated payment history for the current user.

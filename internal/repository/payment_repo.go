@@ -17,7 +17,10 @@ type PaymentRepository interface {
 	GetByExternalID(ctx context.Context, externalID string) (*models.Payment, error)
 	GetByID(ctx context.Context, id uuid.UUID) (*models.Payment, error)
 	ListByUserID(ctx context.Context, userID uuid.UUID, limit, offset int) ([]*models.Payment, int64, error)
-	UpdateStatusByExternalID(ctx context.Context, tx pgx.Tx, externalID string, status models.PaymentStatus, paidAt *time.Time, invoiceURL string) error
+	UpdateStatusByExternalID(ctx context.Context, tx pgx.Tx, externalID string, status models.PaymentStatus, paidAt *time.Time, invoiceURL string, paymentMethod string) error
+	ListAll(ctx context.Context, limit, offset int, search string, status string) ([]*models.AdminPayment, int64, error)
+	GetStats(ctx context.Context) (*models.TransactionStats, error)
+	GetAdminByID(ctx context.Context, id uuid.UUID) (*models.AdminPayment, error)
 }
 
 type postgresPaymentRepository struct {
@@ -136,11 +139,14 @@ func (r *postgresPaymentRepository) ListByUserID(ctx context.Context, userID uui
 	return payments, total, nil
 }
 
-func (r *postgresPaymentRepository) UpdateStatusByExternalID(ctx context.Context, tx pgx.Tx, externalID string, status models.PaymentStatus, paidAt *time.Time, invoiceURL string) error {
+func (r *postgresPaymentRepository) UpdateStatusByExternalID(ctx context.Context, tx pgx.Tx, externalID string, status models.PaymentStatus, paidAt *time.Time, invoiceURL string, paymentMethod string) error {
 	query := `
 		UPDATE payments
-		SET status = $1, paid_at = $2, invoice_url = COALESCE(NULLIF($3, ''), invoice_url)
-		WHERE external_id = $4
+		SET status = $1, 
+		    paid_at = $2, 
+		    invoice_url = COALESCE(NULLIF($3, ''), invoice_url),
+		    payment_method = COALESCE(NULLIF($4, ''), payment_method)
+		WHERE external_id = $5
 	`
 	execFn := func(ctx context.Context, q string, args ...any) error {
 		if tx != nil {
@@ -151,8 +157,133 @@ func (r *postgresPaymentRepository) UpdateStatusByExternalID(ctx context.Context
 		return err
 	}
 
-	if err := execFn(ctx, query, status, paidAt, invoiceURL, externalID); err != nil {
+	if err := execFn(ctx, query, status, paidAt, invoiceURL, paymentMethod, externalID); err != nil {
 		return fmt.Errorf("update payment status db: %w", err)
 	}
 	return nil
 }
+
+func (r *postgresPaymentRepository) ListAll(ctx context.Context, limit, offset int, search string, status string) ([]*models.AdminPayment, int64, error) {
+	var countQuery = `
+		SELECT COUNT(*)
+		FROM payments p
+		JOIN users u ON p.user_id = u.id
+		LEFT JOIN plans pl ON p.plan_id = pl.id
+		WHERE 1=1
+	`
+	var selectQuery = `
+		SELECT p.id, p.user_id, p.subscription_id, p.plan_id, p.billing_cycle, p.amount_idr, p.payment_method, p.external_id, p.status, p.invoice_number, COALESCE(p.invoice_url, ''), p.paid_at, p.created_at,
+		       u.email, u.full_name, COALESCE(pl.name, '')
+		FROM payments p
+		JOIN users u ON p.user_id = u.id
+		LEFT JOIN plans pl ON p.plan_id = pl.id
+		WHERE 1=1
+	`
+
+	var args []any
+	var countArgs []any
+	var placeholderIndex = 1
+
+	if status != "" {
+		countQuery += fmt.Sprintf(" AND p.status = $%d", placeholderIndex)
+		selectQuery += fmt.Sprintf(" AND p.status = $%d", placeholderIndex)
+		args = append(args, status)
+		countArgs = append(countArgs, status)
+		placeholderIndex++
+	}
+
+	if search != "" {
+		countQuery += fmt.Sprintf(" AND (p.invoice_number ILIKE $%d OR u.email ILIKE $%d OR u.full_name ILIKE $%d)", placeholderIndex, placeholderIndex, placeholderIndex)
+		selectQuery += fmt.Sprintf(" AND (p.invoice_number ILIKE $%d OR u.email ILIKE $%d OR u.full_name ILIKE $%d)", placeholderIndex, placeholderIndex, placeholderIndex)
+		searchValue := "%" + search + "%"
+		args = append(args, searchValue)
+		countArgs = append(countArgs, searchValue)
+		placeholderIndex++
+	}
+
+	var total int64
+	err := r.db.QueryRow(ctx, countQuery, countArgs...).Scan(&total)
+	if err != nil {
+		return nil, 0, fmt.Errorf("count all payments: %w", err)
+	}
+
+	selectQuery += fmt.Sprintf(" ORDER BY p.created_at DESC LIMIT $%d OFFSET $%d", placeholderIndex, placeholderIndex+1)
+	args = append(args, limit, offset)
+
+	rows, err := r.db.Query(ctx, selectQuery, args...)
+	if err != nil {
+		return nil, 0, fmt.Errorf("list all payments select: %w", err)
+	}
+	defer rows.Close()
+
+	var payments []*models.AdminPayment
+	for rows.Next() {
+		var p models.AdminPayment
+		if err := rows.Scan(
+			&p.ID, &p.UserID, &p.SubscriptionID, &p.PlanID, &p.BillingCycle, &p.AmountIDR, &p.PaymentMethod, &p.ExternalID, &p.Status,
+			&p.InvoiceNumber, &p.InvoiceURL, &p.PaidAt, &p.CreatedAt,
+			&p.UserEmail, &p.UserName, &p.PlanName,
+		); err != nil {
+			return nil, 0, fmt.Errorf("scan admin payment row: %w", err)
+		}
+		payments = append(payments, &p)
+	}
+
+	return payments, total, nil
+}
+
+func (r *postgresPaymentRepository) GetStats(ctx context.Context) (*models.TransactionStats, error) {
+	var stats models.TransactionStats
+
+	err := r.db.QueryRow(ctx, "SELECT COALESCE(SUM(amount_idr), 0) FROM payments WHERE status = 'paid'").Scan(&stats.TotalVolumeIDR)
+	if err != nil {
+		return nil, fmt.Errorf("get stats volume: %w", err)
+	}
+
+	err = r.db.QueryRow(ctx, "SELECT COUNT(*) FROM payments").Scan(&stats.TotalCount)
+	if err != nil {
+		return nil, fmt.Errorf("get stats count: %w", err)
+	}
+
+	err = r.db.QueryRow(ctx, "SELECT COUNT(*) FROM payments WHERE status = 'paid'").Scan(&stats.PaidCount)
+	if err != nil {
+		return nil, fmt.Errorf("get stats paid count: %w", err)
+	}
+
+	err = r.db.QueryRow(ctx, "SELECT COUNT(*) FROM payments WHERE status = 'pending'").Scan(&stats.PendingCount)
+	if err != nil {
+		return nil, fmt.Errorf("get stats pending count: %w", err)
+	}
+
+	err = r.db.QueryRow(ctx, "SELECT COUNT(*) FROM payments WHERE status IN ('failed', 'expired', 'refunded')").Scan(&stats.FailedCount)
+	if err != nil {
+		return nil, fmt.Errorf("get stats failed count: %w", err)
+	}
+
+	return &stats, nil
+}
+
+func (r *postgresPaymentRepository) GetAdminByID(ctx context.Context, id uuid.UUID) (*models.AdminPayment, error) {
+	query := `
+		SELECT p.id, p.user_id, p.subscription_id, p.plan_id, p.billing_cycle, p.amount_idr, p.payment_method, p.external_id, p.status, p.invoice_number, COALESCE(p.invoice_url, ''), p.paid_at, p.created_at,
+		       u.email, u.full_name, COALESCE(pl.name, '')
+		FROM payments p
+		JOIN users u ON p.user_id = u.id
+		LEFT JOIN plans pl ON p.plan_id = pl.id
+		WHERE p.id = $1
+	`
+	var p models.AdminPayment
+	err := r.db.QueryRow(ctx, query, id).Scan(
+		&p.ID, &p.UserID, &p.SubscriptionID, &p.PlanID, &p.BillingCycle, &p.AmountIDR, &p.PaymentMethod, &p.ExternalID, &p.Status,
+		&p.InvoiceNumber, &p.InvoiceURL, &p.PaidAt, &p.CreatedAt,
+		&p.UserEmail, &p.UserName, &p.PlanName,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("scan admin payment by id: %w", err)
+	}
+	return &p, nil
+}
+

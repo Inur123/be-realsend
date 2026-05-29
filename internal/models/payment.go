@@ -31,3 +31,19 @@ type Payment struct {
 	PaidAt         *time.Time    `json:"paid_at,omitempty" db:"paid_at"`
 	CreatedAt      time.Time     `json:"created_at" db:"created_at"`
 }
+
+type AdminPayment struct {
+	Payment
+	UserEmail string `json:"user_email"`
+	UserName  string `json:"user_name"`
+	PlanName  string `json:"plan_name"`
+}
+
+type TransactionStats struct {
+	TotalVolumeIDR int64 `json:"total_volume_idr"`
+	TotalCount     int64 `json:"total_count"`
+	PaidCount      int64 `json:"paid_count"`
+	PendingCount   int64 `json:"pending_count"`
+	FailedCount    int64 `json:"failed_count"`
+}
+

@@ -29,6 +29,9 @@ type AdminService interface {
 	// Audit Logs
 	ListAuditLogs(ctx context.Context, page, perPage int) ([]*models.AuditLog, int64, error)
 	GetAuditLog(ctx context.Context, id uuid.UUID) (*models.AuditLog, error)
+	// Transactions
+	ListTransactions(ctx context.Context, page, perPage int, search string, status string) ([]*models.AdminPayment, int64, *models.TransactionStats, error)
+	GetTransactionByID(ctx context.Context, id uuid.UUID) (*models.AdminPayment, error)
 }
 
 type AuditMeta struct {
@@ -38,10 +41,11 @@ type AuditMeta struct {
 }
 
 type adminService struct {
-	userRepo  repository.UserRepository
-	planRepo  repository.PlanRepository
-	subRepo   repository.SubscriptionRepository
-	auditRepo repository.AuditLogRepository
+	userRepo    repository.UserRepository
+	planRepo    repository.PlanRepository
+	subRepo     repository.SubscriptionRepository
+	auditRepo   repository.AuditLogRepository
+	paymentRepo repository.PaymentRepository
 }
 
 // NewAdminService creates a new AdminService.
@@ -50,12 +54,14 @@ func NewAdminService(
 	planRepo repository.PlanRepository,
 	subRepo repository.SubscriptionRepository,
 	auditRepo repository.AuditLogRepository,
+	paymentRepo repository.PaymentRepository,
 ) AdminService {
 	return &adminService{
-		userRepo:  userRepo,
-		planRepo:  planRepo,
-		subRepo:   subRepo,
-		auditRepo: auditRepo,
+		userRepo:    userRepo,
+		planRepo:    planRepo,
+		subRepo:     subRepo,
+		auditRepo:   auditRepo,
+		paymentRepo: paymentRepo,
 	}
 }
 
@@ -383,3 +389,34 @@ func (s *adminService) GetAuditLog(ctx context.Context, id uuid.UUID) (*models.A
 	}
 	return log, nil
 }
+
+func (s *adminService) ListTransactions(ctx context.Context, page, perPage int, search string, status string) ([]*models.AdminPayment, int64, *models.TransactionStats, error) {
+	if page < 1 {
+		page = 1
+	}
+	if perPage <= 0 {
+		perPage = 20
+	}
+	offset := (page - 1) * perPage
+
+	payments, total, err := s.paymentRepo.ListAll(ctx, perPage, offset, search, status)
+	if err != nil {
+		return nil, 0, nil, err
+	}
+
+	stats, err := s.paymentRepo.GetStats(ctx)
+	if err != nil {
+		return nil, 0, nil, err
+	}
+
+	return payments, total, stats, nil
+}
+
+func (s *adminService) GetTransactionByID(ctx context.Context, id uuid.UUID) (*models.AdminPayment, error) {
+	payment, err := s.paymentRepo.GetAdminByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	return payment, nil
+}
+

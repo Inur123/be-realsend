@@ -75,7 +75,7 @@ func main() {
 	featureChecker := service.NewFeatureCheckerService(redisClient, subRepo, planRepo, userRepo)
 	emailService := service.NewEmailService(emailRepo, domainRepo, suppressionRepo, planRepo, subRepo, quotaService, asynqClient, cfg, featureChecker, trackingService)
 	analyticsService := service.NewAnalyticsService(emailRepo)
-	adminService := service.NewAdminService(userRepo, planRepo, subRepo, auditLogRepo)
+	adminService := service.NewAdminService(userRepo, planRepo, subRepo, auditLogRepo, paymentRepo)
 	billingService := service.NewBillingService(cfg, dbPool, planRepo, subRepo, userRepo, paymentRepo)
 
 	// 7. Initialize handlers

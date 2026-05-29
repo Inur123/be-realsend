@@ -176,7 +176,7 @@ func (s *domainService) VerifyDomain(ctx context.Context, id uuid.UUID) (*models
 	}
 
 	// In local/dev environments without real DNS records, allow a "force-bypass" mock verify
-	// if the domain is a special test name (e.g. localhost, test.id, test.realsend.id) or if the query parameter is passed.
+	// if the domain is a special test name (e.g. localhost, test.id, test.realsend.web.id) or if the query parameter is passed.
 	// For maximum developer friendliness, if any of the checks pass or if it's a test domain, we let the status update.
 	// Let's implement real verification, but fall back gracefully so users can test locally!
 	status := models.DomainPending
@@ -190,7 +190,7 @@ func (s *domainService) VerifyDomain(ctx context.Context, id uuid.UUID) (*models
 	}
 
 	// Standard dev check - auto verify test/mock domains so the user isn't stuck during local developer runs!
-	if strings.HasSuffix(domain.DomainName, ".test") || domain.DomainName == "localhost" || strings.Contains(domain.DomainName, "realsend.id") {
+	if strings.HasSuffix(domain.DomainName, ".test") || domain.DomainName == "localhost" || strings.Contains(domain.DomainName, "realsend.web.id") {
 		status = models.DomainVerified
 		spfOk = true
 		dkimOk = true

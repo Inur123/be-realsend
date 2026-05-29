@@ -103,7 +103,6 @@ func RegisterRoutes(
 	billing.Get("/current", billingHandler.GetOverview)
 	billing.Get("/invoices", billingHandler.GetPaymentHistory)
 	billing.Post("/checkout", billingHandler.CreateTransaction)
-	billing.Post("/sync/:order_id", billingHandler.SyncPaymentStatus)
 	billing.Get("/client-key", func(c *fiber.Ctx) error {
 		c.Locals("midtrans_client_key", cfg.MidtransClientKey)
 		return billingHandler.GetClientKey(c)
@@ -134,4 +133,7 @@ func RegisterRoutes(
 	// Audit logs
 	admin.Get("/audit-logs", adminHandler.GetAuditLogs)
 	admin.Get("/audit-logs/:id", adminHandler.GetAuditLog)
+	// Transactions
+	admin.Get("/transactions", adminHandler.ListTransactions)
+	admin.Get("/transactions/:id", adminHandler.GetTransactionByID)
 }

@@ -333,3 +333,50 @@ func (h *AdminHandler) GetAuditLog(c *fiber.Ctx) error {
 
 	return utils.Success(c, log)
 }
+
+// ListTransactions handles GET /api/v1/admin/transactions
+func (h *AdminHandler) ListTransactions(c *fiber.Ctx) error {
+	page, _ := strconv.Atoi(c.Query("page", "1"))
+	perPage, _ := strconv.Atoi(c.Query("per_page", "20"))
+	search := c.Query("search")
+	status := c.Query("status")
+
+	payments, total, stats, err := h.adminService.ListTransactions(c.Context(), page, perPage, search, status)
+	if err != nil {
+		return utils.InternalError(c, err.Error())
+	}
+
+	totalPages := int(total) / perPage
+	if int(total)%perPage > 0 {
+		totalPages++
+	}
+
+	return utils.SuccessWithMeta(c, fiber.Map{
+		"transactions": payments,
+		"stats":        stats,
+	}, &utils.Meta{
+		Page:       page,
+		PerPage:    perPage,
+		Total:      total,
+		TotalPages: totalPages,
+	})
+}
+
+// GetTransactionByID handles GET /api/v1/admin/transactions/:id
+func (h *AdminHandler) GetTransactionByID(c *fiber.Ctx) error {
+	id, err := uuid.Parse(c.Params("id"))
+	if err != nil {
+		return utils.BadRequest(c, "invalid transaction id")
+	}
+
+	payment, err := h.adminService.GetTransactionByID(c.Context(), id)
+	if err != nil {
+		return utils.InternalError(c, err.Error())
+	}
+	if payment == nil {
+		return utils.NotFound(c, "transaction not found")
+	}
+
+	return utils.Success(c, payment)
+}
+

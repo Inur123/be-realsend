@@ -65,13 +65,13 @@ func (s *dnsService) GenerateDKIMKeyPair() (publicKeyStr, privateKeyStr string, 
 func (s *dnsService) BuildDNSRecords(domainName, dkimPublicKeyBase64 string) *DNSRecords {
 	selector := "realsend"
 	return &DNSRecords{
-		SPFRecord:         "v=spf1 include:relay.realsend.id ~all",
+		SPFRecord:         "v=spf1 include:relay.realsend.web.id ~all",
 		DKIMSelector:      selector,
 		DKIMHost:          fmt.Sprintf("%s._domainkey.%s", selector, domainName),
 		DKIMRecord:        fmt.Sprintf("v=DKIM1; k=rsa; p=%s", dkimPublicKeyBase64),
-		DMARCRecord:       "v=DMARC1; p=none; pct=100; rua=mailto:dmarc-reports@realsend.id",
-		ReturnPathCNAME:   fmt.Sprintf("realsend-cname.%s", domainName),
-		ReturnPathValue:   "feedback.realsend.id",
+		DMARCRecord:       "v=DMARC1; p=none; pct=100; rua=mailto:dmarc-reports@realsend.web.id",
+		ReturnPathCNAME:   "feedback.realsend.web.id",
+		ReturnPathValue:   "feedback.realsend.web.id",
 	}
 }
 
@@ -85,7 +85,7 @@ func (s *dnsService) VerifyDNS(ctx context.Context, domainName string, expected 
 		for _, record := range spfTXT {
 			// Clean record strings
 			cleanRecord := strings.Join(strings.Fields(record), " ")
-			if strings.Contains(cleanRecord, "v=spf1") && strings.Contains(cleanRecord, "include:relay.realsend.id") {
+			if strings.Contains(cleanRecord, "v=spf1") && strings.Contains(cleanRecord, "include:relay.realsend.web.id") {
 				spfOk = true
 				break
 			}

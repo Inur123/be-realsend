@@ -12,6 +12,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/hibiken/asynq"
+	_ "github.com/realsend/be-realsend/cmd/api/docs"
 	"github.com/realsend/be-realsend/internal/config"
 	"github.com/realsend/be-realsend/internal/database"
 	"github.com/realsend/be-realsend/internal/handler"
@@ -19,6 +20,28 @@ import (
 	"github.com/realsend/be-realsend/internal/service"
 	"github.com/realsend/be-realsend/internal/smtpserver"
 )
+
+// @title RealSend API
+// @version 1.0
+// @description Platform Email Transaksional & SMTP Delivery Profesional Indonesia.
+// @termsOfService https://realsend.web.id/legal/sla
+
+// @contact.name RealSend Support
+// @contact.url https://realsend.web.id
+// @contact.email support@realsend.web.id
+
+// @host localhost:3001
+// @BasePath /api/v1
+
+// @securityDefinitions.apikey ApiKeyAuth
+// @in header
+// @name X-API-Key
+// @description API Key untuk integrasi aplikasi & kirim email
+
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
+// @description Format: "Bearer [JWT_TOKEN]" untuk akses API dashboard
 
 func main() {
 	// 1. Load configuration

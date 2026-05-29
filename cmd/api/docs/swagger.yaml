@@ -1,0 +1,900 @@
+basePath: /api/v1
+definitions:
+  github_com_realsend_be-realsend_internal_models.BounceType:
+    enum:
+    - hard
+    - soft
+    - none
+    type: string
+    x-enum-varnames:
+    - BounceHard
+    - BounceSoft
+    - BounceNone
+  github_com_realsend_be-realsend_internal_models.EmailLog:
+    properties:
+      api_key_id:
+        $ref: '#/definitions/uuid.NullUUID'
+      bcc_addresses:
+        items:
+          type: string
+        type: array
+      bounce_reason:
+        $ref: '#/definitions/sql.NullString'
+      bounce_reason_str:
+        description: Helper presentation strings
+        type: string
+      bounce_type:
+        $ref: '#/definitions/github_com_realsend_be-realsend_internal_models.BounceType'
+      cc_addresses:
+        items:
+          type: string
+        type: array
+      clicked_at:
+        $ref: '#/definitions/sql.NullTime'
+      clicked_at_str:
+        type: string
+      clicked_count:
+        type: integer
+      content_type:
+        type: string
+      created_at:
+        type: string
+      delivered_at:
+        $ref: '#/definitions/sql.NullTime'
+      delivered_at_str:
+        type: string
+      domain_id:
+        $ref: '#/definitions/uuid.NullUUID'
+      from_address:
+        type: string
+      headers:
+        description: Raw JSONB
+        items:
+          type: integer
+        type: array
+      id:
+        type: string
+      metadata:
+        description: Raw JSONB
+        items:
+          type: integer
+        type: array
+      opened_at:
+        $ref: '#/definitions/sql.NullTime'
+      opened_at_str:
+        type: string
+      opened_count:
+        type: integer
+      queued_at:
+        type: string
+      sent_at:
+        $ref: '#/definitions/sql.NullTime'
+      sent_at_str:
+        type: string
+      smtp_message_id:
+        $ref: '#/definitions/sql.NullString'
+      smtp_message_id_str:
+        type: string
+      smtp_response:
+        $ref: '#/definitions/sql.NullString'
+      smtp_response_str:
+        type: string
+      status:
+        $ref: '#/definitions/github_com_realsend_be-realsend_internal_models.EmailStatus'
+      subject:
+        type: string
+      tags:
+        items:
+          type: string
+        type: array
+      to_address:
+        type: string
+      user_id:
+        type: string
+    type: object
+  github_com_realsend_be-realsend_internal_models.EmailStatus:
+    enum:
+    - queued
+    - processing
+    - sent
+    - delivered
+    - bounced
+    - rejected
+    - failed
+    - opened
+    - clicked
+    type: string
+    x-enum-varnames:
+    - StatusQueued
+    - StatusProcessing
+    - StatusSent
+    - StatusDelivered
+    - StatusBounced
+    - StatusRejected
+    - StatusFailed
+    - StatusOpened
+    - StatusClicked
+  github_com_realsend_be-realsend_internal_service.SendEmailRequest:
+    properties:
+      bcc:
+        items:
+          type: string
+        type: array
+      body:
+        type: string
+      cc:
+        items:
+          type: string
+        type: array
+      content_type:
+        enum:
+        - text/plain
+        - text/html
+        type: string
+      from:
+        type: string
+      headers:
+        additionalProperties:
+          type: string
+        type: object
+      metadata:
+        additionalProperties:
+          type: string
+        type: object
+      subject:
+        maxLength: 998
+        minLength: 1
+        type: string
+      tags:
+        items:
+          type: string
+        type: array
+      to:
+        type: string
+    required:
+    - body
+    - from
+    - subject
+    - to
+    type: object
+  internal_handler.addDomainRequest:
+    properties:
+      domain_name:
+        type: string
+    required:
+    - domain_name
+    type: object
+  internal_handler.changePasswordRequest:
+    properties:
+      new_password:
+        maxLength: 72
+        minLength: 8
+        type: string
+      old_password:
+        type: string
+    required:
+    - new_password
+    - old_password
+    type: object
+  internal_handler.createAPIKeyRequest:
+    properties:
+      domain_id:
+        type: string
+      name:
+        maxLength: 100
+        minLength: 2
+        type: string
+    required:
+    - name
+    type: object
+  internal_handler.loginRequest:
+    properties:
+      email:
+        type: string
+      password:
+        type: string
+    required:
+    - email
+    - password
+    type: object
+  internal_handler.registerRequest:
+    properties:
+      email:
+        type: string
+      full_name:
+        maxLength: 100
+        minLength: 2
+        type: string
+      password:
+        maxLength: 72
+        minLength: 8
+        type: string
+    required:
+    - email
+    - full_name
+    - password
+    type: object
+  internal_handler.updateProfileRequest:
+    properties:
+      company_name:
+        maxLength: 100
+        type: string
+      email:
+        type: string
+      full_name:
+        maxLength: 100
+        minLength: 2
+        type: string
+    required:
+    - email
+    - full_name
+    type: object
+  sql.NullString:
+    properties:
+      string:
+        type: string
+      valid:
+        description: Valid is true if String is not NULL
+        type: boolean
+    type: object
+  sql.NullTime:
+    properties:
+      time:
+        type: string
+      valid:
+        description: Valid is true if Time is not NULL
+        type: boolean
+    type: object
+  uuid.NullUUID:
+    properties:
+      uuid:
+        type: string
+      valid:
+        description: Valid is true if UUID is not NULL
+        type: boolean
+    type: object
+host: localhost:3001
+info:
+  contact:
+    email: support@realsend.web.id
+    name: RealSend Support
+    url: https://realsend.web.id
+  description: Platform Email Transaksional & SMTP Delivery Profesional Indonesia.
+  termsOfService: https://realsend.web.id/legal/sla
+  title: RealSend API
+  version: "1.0"
+paths:
+  /api-keys:
+    get:
+      description: Mendapatkan seluruh daftar API Key yang dimiliki oleh user saat
+        ini.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Daftar API Key metadata
+          schema:
+            items:
+              additionalProperties: true
+              type: object
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List semua API Key
+      tags:
+      - API Keys
+    post:
+      consumes:
+      - application/json
+      description: Membuat API Key baru untuk autentikasi pengiriman email lewat API
+        / SMTP. Token rahasia hanya dimunculkan SATU KALI setelah dibuat.
+      parameters:
+      - description: Data API Key baru
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handler.createAPIKeyRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: API Key berhasil dibuat
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Body request tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+        "422":
+          description: Validasi gagal
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Buat API Key baru
+      tags:
+      - API Keys
+  /api-keys/{id}:
+    delete:
+      description: Menghapus atau membatalkan validitas API Key tertentu berdasarkan
+        ID.
+      parameters:
+      - description: API Key ID UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Pesan sukses penghapusan
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Format UUID tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Akses dilarang
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: API Key tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Revoke/Hapus API Key
+      tags:
+      - API Keys
+    get:
+      description: Mendapatkan metadata API Key tertentu berdasarkan ID.
+      parameters:
+      - description: API Key ID UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Metadata API Key
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Format UUID tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Akses dilarang
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: API Key tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Detail API Key
+      tags:
+      - API Keys
+  /auth/login:
+    post:
+      consumes:
+      - application/json
+      description: Masuk ke akun menggunakan email dan password untuk mendapatkan
+        JWT token.
+      parameters:
+      - description: Data login
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handler.loginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Token JWT dan data profil user
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Body request tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Email atau password salah
+          schema:
+            additionalProperties: true
+            type: object
+        "422":
+          description: Validasi gagal
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Login akun
+      tags:
+      - Auth
+  /auth/logout:
+    post:
+      description: Keluar dari sistem dan membuat log aktivitas logout.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Logout berhasil
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Logout user
+      tags:
+      - Auth
+  /auth/me:
+    get:
+      description: Mendapatkan detail informasi profil user yang sedang login berdasarkan
+        JWT token.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Detail profil user
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Dapatkan profil user saat ini
+      tags:
+      - Auth
+    put:
+      consumes:
+      - application/json
+      description: Mengubah nama lengkap, nama perusahaan, atau email user.
+      parameters:
+      - description: Data profil baru
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handler.updateProfileRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Profil berhasil diperbarui
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+        "422":
+          description: Validasi gagal
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Perbarui profil user
+      tags:
+      - Auth
+  /auth/me/password:
+    put:
+      consumes:
+      - application/json
+      description: Mengubah password lama dengan password baru.
+      parameters:
+      - description: Data password
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handler.changePasswordRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Password berhasil diperbarui
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Password lama salah atau validasi gagal
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Ubah password user
+      tags:
+      - Auth
+  /auth/register:
+    post:
+      consumes:
+      - application/json
+      description: Mendaftarkan akun developer baru di platform RealSend.
+      parameters:
+      - description: Data registrasi user
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handler.registerRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Akun berhasil dibuat
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Body request tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "409":
+          description: Email sudah terdaftar
+          schema:
+            additionalProperties: true
+            type: object
+        "422":
+          description: Validasi gagal
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Registrasi akun baru
+      tags:
+      - Auth
+  /domains:
+    get:
+      description: Mendapatkan daftar semua domain pengirim yang didaftarkan oleh
+        user saat ini.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Daftar domain pengirim
+          schema:
+            items:
+              additionalProperties: true
+              type: object
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List semua domain pengirim user
+      tags:
+      - Domains
+    post:
+      consumes:
+      - application/json
+      description: Mendaftarkan nama domain baru dan mendapatkan record DNS (SPF,
+        DKIM, DMARC) untuk verifikasi.
+      parameters:
+      - description: Data nama domain baru
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handler.addDomainRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Domain berhasil dibuat beserta DNS records
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Body request tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+        "409":
+          description: Nama domain sudah terdaftar di sistem
+          schema:
+            additionalProperties: true
+            type: object
+        "422":
+          description: Validasi gagal
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Tambah domain pengirim baru
+      tags:
+      - Domains
+  /domains/{id}:
+    delete:
+      description: Menghapus domain pengirim terdaftar dan seluruh asosiasi datanya
+        berdasarkan ID.
+      parameters:
+      - description: Domain ID UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Pesan sukses penghapusan
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Format UUID tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Akses dilarang
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Domain tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Hapus domain pengirim
+      tags:
+      - Domains
+    get:
+      description: Mendapatkan data detail dari domain pengirim tertentu berserta
+        catatan DNS record nya.
+      parameters:
+      - description: Domain ID UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Detail data domain dan catatan DNS
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Format UUID tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Akses dilarang (bukan milik user ini)
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Domain tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Ambil detail domain pengirim
+      tags:
+      - Domains
+  /domains/{id}/verify:
+    post:
+      description: Melakukan pemeriksaan DNS secara live untuk mencocokkan SPF, DKIM,
+        dan DMARC.
+      parameters:
+      - description: Domain ID UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Status verifikasi domain terbaru
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Format UUID tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Akses dilarang
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Domain tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Verifikasi catatan DNS domain
+      tags:
+      - Domains
+  /emails/{id}:
+    get:
+      description: Mendapatkan detail status pengiriman email tertentu berdasarkan
+        ID Log UUID.
+      parameters:
+      - description: Email Log UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Detail log email
+          schema:
+            $ref: '#/definitions/github_com_realsend_be-realsend_internal_models.EmailLog'
+        "400":
+          description: Format UUID tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: API Key tidak valid atau tidak disertakan
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Log email tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Ambil status log email
+      tags:
+      - Emails
+  /emails/send:
+    post:
+      consumes:
+      - application/json
+      description: Mengirim email transaksional menggunakan domain yang terverifikasi
+        dan aktif.
+      parameters:
+      - description: Payload data email
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_realsend_be-realsend_internal_service.SendEmailRequest'
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Email masuk antrean (queued)
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad request atau domain tidak ditemukan/tidak terverifikasi
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: API Key tidak valid atau tidak disertakan
+          schema:
+            additionalProperties: true
+            type: object
+        "422":
+          description: Payload tidak valid (validasi gagal)
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Kirim email transaksional
+      tags:
+      - Emails
+securityDefinitions:
+  ApiKeyAuth:
+    description: API Key untuk integrasi aplikasi & kirim email
+    in: header
+    name: X-API-Key
+    type: apiKey
+  BearerAuth:
+    description: 'Format: "Bearer [JWT_TOKEN]" untuk akses API dashboard'
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

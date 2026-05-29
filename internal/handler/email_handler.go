@@ -3,6 +3,7 @@ package handler
 import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
+	_ "github.com/realsend/be-realsend/internal/models"
 	"github.com/realsend/be-realsend/internal/service"
 	"github.com/realsend/be-realsend/internal/utils"
 )
@@ -18,6 +19,19 @@ func NewEmailHandler(emailService service.EmailService) *EmailHandler {
 }
 
 // SendEmail handles POST /api/v1/emails/send
+// @Summary Kirim email transaksional
+// @Description Mengirim email transaksional menggunakan domain yang terverifikasi dan aktif.
+// @Tags Emails
+// @Accept json
+// @Produce json
+// @Param request body service.SendEmailRequest true "Payload data email"
+// @Success 202 {object} map[string]interface{} "Email masuk antrean (queued)"
+// @Failure 400 {object} map[string]interface{} "Bad request atau domain tidak ditemukan/tidak terverifikasi"
+// @Failure 401 {object} map[string]interface{} "API Key tidak valid atau tidak disertakan"
+// @Failure 422 {object} map[string]interface{} "Payload tidak valid (validasi gagal)"
+// @Failure 500 {object} map[string]interface{} "Internal server error"
+// @Security ApiKeyAuth
+// @Router /emails/send [post]
 func (h *EmailHandler) SendEmail(c *fiber.Ctx) error {
 	// user_id and api_key_id are injected by APIKeyAuth middleware
 	userIDStr, ok := c.Locals("user_id").(string)
@@ -66,6 +80,18 @@ func (h *EmailHandler) SendEmail(c *fiber.Ctx) error {
 }
 
 // GetEmail handles GET /api/v1/emails/:id
+// @Summary Ambil status log email
+// @Description Mendapatkan detail status pengiriman email tertentu berdasarkan ID Log UUID.
+// @Tags Emails
+// @Produce json
+// @Param id path string true "Email Log UUID"
+// @Success 200 {object} models.EmailLog "Detail log email"
+// @Failure 400 {object} map[string]interface{} "Format UUID tidak valid"
+// @Failure 401 {object} map[string]interface{} "API Key tidak valid atau tidak disertakan"
+// @Failure 404 {object} map[string]interface{} "Log email tidak ditemukan"
+// @Failure 500 {object} map[string]interface{} "Internal server error"
+// @Security ApiKeyAuth
+// @Router /emails/{id} [get]
 func (h *EmailHandler) GetEmail(c *fiber.Ctx) error {
 	userIDStr, ok := c.Locals("user_id").(string)
 	if !ok {

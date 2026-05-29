@@ -26,6 +26,18 @@ type createAPIKeyRequest struct {
 }
 
 // CreateKey handles token generation and metadata insertion.
+// @Summary Buat API Key baru
+// @Description Membuat API Key baru untuk autentikasi pengiriman email lewat API / SMTP. Token rahasia hanya dimunculkan SATU KALI setelah dibuat.
+// @Tags API Keys
+// @Accept json
+// @Produce json
+// @Param request body createAPIKeyRequest true "Data API Key baru"
+// @Success 201 {object} map[string]interface{} "API Key berhasil dibuat"
+// @Failure 400 {object} map[string]interface{} "Body request tidak valid"
+// @Failure 401 {object} map[string]interface{} "Unauthorized"
+// @Failure 422 {object} map[string]interface{} "Validasi gagal"
+// @Security BearerAuth
+// @Router /api-keys [post]
 func (h *APIKeyHandler) CreateKey(c *fiber.Ctx) error {
 	userIDStr, ok := c.Locals("user_id").(string)
 	if !ok {
@@ -71,6 +83,14 @@ func (h *APIKeyHandler) CreateKey(c *fiber.Ctx) error {
 }
 
 // ListKeys returns all active key records for the dashboard.
+// @Summary List semua API Key
+// @Description Mendapatkan seluruh daftar API Key yang dimiliki oleh user saat ini.
+// @Tags API Keys
+// @Produce json
+// @Success 200 {array} map[string]interface{} "Daftar API Key metadata"
+// @Failure 401 {object} map[string]interface{} "Unauthorized"
+// @Security BearerAuth
+// @Router /api-keys [get]
 func (h *APIKeyHandler) ListKeys(c *fiber.Ctx) error {
 	userIDStr, ok := c.Locals("user_id").(string)
 	if !ok {
@@ -91,6 +111,18 @@ func (h *APIKeyHandler) ListKeys(c *fiber.Ctx) error {
 }
 
 // GetKey returns a single API key metadata record.
+// @Summary Detail API Key
+// @Description Mendapatkan metadata API Key tertentu berdasarkan ID.
+// @Tags API Keys
+// @Produce json
+// @Param id path string true "API Key ID UUID"
+// @Success 200 {object} map[string]interface{} "Metadata API Key"
+// @Failure 400 {object} map[string]interface{} "Format UUID tidak valid"
+// @Failure 401 {object} map[string]interface{} "Unauthorized"
+// @Failure 403 {object} map[string]interface{} "Akses dilarang"
+// @Failure 404 {object} map[string]interface{} "API Key tidak ditemukan"
+// @Security BearerAuth
+// @Router /api-keys/{id} [get]
 func (h *APIKeyHandler) GetKey(c *fiber.Ctx) error {
 	userIDStr, ok := c.Locals("user_id").(string)
 	if !ok {
@@ -120,6 +152,18 @@ func (h *APIKeyHandler) GetKey(c *fiber.Ctx) error {
 }
 
 // RevokeKey deletes/invalidates an existing key.
+// @Summary Revoke/Hapus API Key
+// @Description Menghapus atau membatalkan validitas API Key tertentu berdasarkan ID.
+// @Tags API Keys
+// @Produce json
+// @Param id path string true "API Key ID UUID"
+// @Success 200 {object} map[string]interface{} "Pesan sukses penghapusan"
+// @Failure 400 {object} map[string]interface{} "Format UUID tidak valid"
+// @Failure 401 {object} map[string]interface{} "Unauthorized"
+// @Failure 403 {object} map[string]interface{} "Akses dilarang"
+// @Failure 404 {object} map[string]interface{} "API Key tidak ditemukan"
+// @Security BearerAuth
+// @Router /api-keys/{id} [delete]
 func (h *APIKeyHandler) RevokeKey(c *fiber.Ctx) error {
 	userIDStr, ok := c.Locals("user_id").(string)
 	if !ok {

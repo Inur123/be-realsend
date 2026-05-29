@@ -43,6 +43,17 @@ type changePasswordRequest struct {
 }
 
 // Register handles user registration.
+// @Summary Registrasi akun baru
+// @Description Mendaftarkan akun developer baru di platform RealSend.
+// @Tags Auth
+// @Accept json
+// @Produce json
+// @Param request body registerRequest true "Data registrasi user"
+// @Success 201 {object} map[string]interface{} "Akun berhasil dibuat"
+// @Failure 400 {object} map[string]interface{} "Body request tidak valid"
+// @Failure 409 {object} map[string]interface{} "Email sudah terdaftar"
+// @Failure 422 {object} map[string]interface{} "Validasi gagal"
+// @Router /auth/register [post]
 func (h *AuthHandler) Register(c *fiber.Ctx) error {
 	var req registerRequest
 	if err := c.BodyParser(&req); err != nil {
@@ -65,6 +76,17 @@ func (h *AuthHandler) Register(c *fiber.Ctx) error {
 }
 
 // Login handles user authentication.
+// @Summary Login akun
+// @Description Masuk ke akun menggunakan email dan password untuk mendapatkan JWT token.
+// @Tags Auth
+// @Accept json
+// @Produce json
+// @Param request body loginRequest true "Data login"
+// @Success 200 {object} map[string]interface{} "Token JWT dan data profil user"
+// @Failure 400 {object} map[string]interface{} "Body request tidak valid"
+// @Failure 401 {object} map[string]interface{} "Email atau password salah"
+// @Failure 422 {object} map[string]interface{} "Validasi gagal"
+// @Router /auth/login [post]
 func (h *AuthHandler) Login(c *fiber.Ctx) error {
 	var req loginRequest
 	if err := c.BodyParser(&req); err != nil {
@@ -90,6 +112,14 @@ func (h *AuthHandler) Login(c *fiber.Ctx) error {
 }
 
 // Me returns the profile of the currently logged-in user.
+// @Summary Dapatkan profil user saat ini
+// @Description Mendapatkan detail informasi profil user yang sedang login berdasarkan JWT token.
+// @Tags Auth
+// @Produce json
+// @Success 200 {object} map[string]interface{} "Detail profil user"
+// @Failure 401 {object} map[string]interface{} "Unauthorized"
+// @Security BearerAuth
+// @Router /auth/me [get]
 func (h *AuthHandler) Me(c *fiber.Ctx) error {
 	userIDStr, ok := c.Locals("user_id").(string)
 	if !ok {
@@ -110,6 +140,17 @@ func (h *AuthHandler) Me(c *fiber.Ctx) error {
 }
 
 // UpdateProfile handles profile modifications.
+// @Summary Perbarui profil user
+// @Description Mengubah nama lengkap, nama perusahaan, atau email user.
+// @Tags Auth
+// @Accept json
+// @Produce json
+// @Param request body updateProfileRequest true "Data profil baru"
+// @Success 200 {object} map[string]interface{} "Profil berhasil diperbarui"
+// @Failure 401 {object} map[string]interface{} "Unauthorized"
+// @Failure 422 {object} map[string]interface{} "Validasi gagal"
+// @Security BearerAuth
+// @Router /auth/me [put]
 func (h *AuthHandler) UpdateProfile(c *fiber.Ctx) error {
 	userIDStr, ok := c.Locals("user_id").(string)
 	if !ok {
@@ -142,6 +183,17 @@ func (h *AuthHandler) UpdateProfile(c *fiber.Ctx) error {
 }
 
 // ChangePassword handles password updates.
+// @Summary Ubah password user
+// @Description Mengubah password lama dengan password baru.
+// @Tags Auth
+// @Accept json
+// @Produce json
+// @Param request body changePasswordRequest true "Data password"
+// @Success 200 {object} map[string]interface{} "Password berhasil diperbarui"
+// @Failure 400 {object} map[string]interface{} "Password lama salah atau validasi gagal"
+// @Failure 401 {object} map[string]interface{} "Unauthorized"
+// @Security BearerAuth
+// @Router /auth/me/password [put]
 func (h *AuthHandler) ChangePassword(c *fiber.Ctx) error {
 	userIDStr, ok := c.Locals("user_id").(string)
 	if !ok {
@@ -176,6 +228,14 @@ func (h *AuthHandler) ChangePassword(c *fiber.Ctx) error {
 }
 
 // Logout handles user logout audit log.
+// @Summary Logout user
+// @Description Keluar dari sistem dan membuat log aktivitas logout.
+// @Tags Auth
+// @Produce json
+// @Success 200 {object} map[string]interface{} "Logout berhasil"
+// @Failure 401 {object} map[string]interface{} "Unauthorized"
+// @Security BearerAuth
+// @Router /auth/logout [post]
 func (h *AuthHandler) Logout(c *fiber.Ctx) error {
 	userIDStr, ok := c.Locals("user_id").(string)
 	if !ok {

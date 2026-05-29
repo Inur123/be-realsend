@@ -2,6 +2,7 @@ package handler
 
 import (
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/swagger"
 	"github.com/realsend/be-realsend/internal/config"
 	"github.com/realsend/be-realsend/internal/middleware"
 	"github.com/realsend/be-realsend/internal/repository"
@@ -28,6 +29,9 @@ func RegisterRoutes(
 ) {
 	// CORS Middleware
 	app.Use(middleware.CORS(cfg))
+
+	// Swagger route
+	app.Get("/swagger/*", swagger.HandlerDefault)
 
 	// API Group
 	api := app.Group("/api/v1")

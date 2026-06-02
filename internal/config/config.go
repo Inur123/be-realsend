@@ -56,6 +56,11 @@ type Config struct {
 	MidtransFinishURL       string
 	MidtransUnfinishURL     string
 	MidtransErrorURL        string
+
+	// Google Auth
+	GoogleClientID     string
+	GoogleClientSecret string
+	GoogleRedirectURL  string
 }
 
 // Load reads configuration from .env file and environment variables.
@@ -111,6 +116,11 @@ func Load() *Config {
 		MidtransFinishURL:       getEnv("MIDTRANS_FINISH_URL", ""),
 		MidtransUnfinishURL:     getEnv("MIDTRANS_UNFINISH_URL", ""),
 		MidtransErrorURL:        getEnv("MIDTRANS_ERROR_URL", ""),
+
+		// Google Auth
+		GoogleClientID:     getEnv("GOOGLE_CLIENT_ID", ""),
+		GoogleClientSecret: getEnv("GOOGLE_CLIENT_SECRET", ""),
+		GoogleRedirectURL:  getEnv("GOOGLE_REDIRECT_URL", "http://localhost:3001/api/v1/auth/google/callback"),
 	}
 }
 

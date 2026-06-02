@@ -18,6 +18,7 @@ import (
 type AuthService interface {
 	Register(ctx context.Context, email, password, fullName string) (*models.User, error)
 	Login(ctx context.Context, email, password string) (string, *models.User, error)
+	LoginOrRegisterGoogle(ctx context.Context, email, fullName string) (string, *models.User, error)
 	GetProfile(ctx context.Context, id uuid.UUID) (*models.User, error)
 	UpdateProfile(ctx context.Context, id uuid.UUID, fullName, companyName, email string) (*models.User, error)
 	ChangePassword(ctx context.Context, id uuid.UUID, oldPassword, newPassword string) error
@@ -261,4 +262,106 @@ func (s *authService) ChangePassword(ctx context.Context, id uuid.UUID, oldPassw
 	}
 
 	return nil
+}
+
+func (s *authService) LoginOrRegisterGoogle(ctx context.Context, email, fullName string) (string, *models.User, error) {
+	// 1. Get user by email
+	user, err := s.userRepo.GetByEmail(ctx, email)
+	if err != nil {
+		return "", nil, fmt.Errorf("get user by email: %w", err)
+	}
+
+	// 2. If user doesn't exist, register them automatically
+	if user == nil {
+		// Generate random password hash (bcrypt hash of a uuid or random string)
+		randomPasswordHash, errHash := utils.HashPassword(uuid.New().String())
+		if errHash != nil {
+			return "", nil, fmt.Errorf("hash random password: %w", errHash)
+		}
+
+		userID := uuid.New()
+		freePlanID := uuid.MustParse("a0000000-0000-0000-0000-000000000001") // Free Plan UUID
+
+		// Begin transaction
+		tx, errTx := s.dbPool.Begin(ctx)
+		if errTx != nil {
+			return "", nil, fmt.Errorf("begin transaction: %w", errTx)
+		}
+		defer tx.Rollback(ctx)
+
+		// Create user
+		userObj := &models.User{
+			ID:            userID,
+			Email:         email,
+			PasswordHash:  randomPasswordHash,
+			FullName:      fullName,
+			Role:          models.RoleUser,
+			Status:        models.StatusActive,
+			EmailVerified: true,
+			CurrentPlanID: uuid.NullUUID{UUID: freePlanID, Valid: true},
+			CreatedAt:     time.Now(),
+			UpdatedAt:     time.Now(),
+		}
+
+		err = s.userRepo.Create(ctx, tx, userObj)
+		if err != nil {
+			return "", nil, fmt.Errorf("create user: %w", err)
+		}
+
+		// Create subscription
+		sub := &models.Subscription{
+			ID:                  uuid.New(),
+			UserID:              userID,
+			PlanID:              freePlanID,
+			Status:              models.SubscriptionActive,
+			StartedAt:           time.Now(),
+			BillingCycle:        "monthly",
+			AmountIDR:           0,
+			PaymentMethod:       "free",
+			EmailsSentThisMonth: 0,
+			EmailsSentToday:     0,
+			MonthResetAt:        time.Now().AddDate(0, 1, 0),
+			DayResetAt:          time.Now().AddDate(0, 0, 1),
+			CreatedAt:           time.Now(),
+			UpdatedAt:           time.Now(),
+		}
+
+		err = s.subRepo.Create(ctx, tx, sub)
+		if err != nil {
+			return "", nil, fmt.Errorf("create subscription: %w", err)
+		}
+
+		// Commit transaction
+		if err = tx.Commit(ctx); err != nil {
+			return "", nil, fmt.Errorf("commit transaction: %w", err)
+		}
+
+		// Fetch fresh complete user structure (with join info)
+		user, err = s.userRepo.GetByID(ctx, userID)
+		if err != nil {
+			return "", nil, fmt.Errorf("get fresh user: %w", err)
+		}
+	}
+
+	// 3. Check user status
+	if user.Status == models.StatusSuspended {
+		return "", nil, errors.New("your account has been suspended. Please contact support")
+	}
+
+	// 4. Generate JWT token
+	token, err := utils.GenerateToken(s.cfg.JWTSecret, s.cfg.JWTExpireHours, user.ID, string(user.Role))
+	if err != nil {
+		return "", nil, fmt.Errorf("generate jwt: %w", err)
+	}
+
+	// 5. Update last login
+	_ = s.userRepo.UpdateLastLogin(ctx, user.ID)
+
+	// Fetch active subscription
+	sub, errSub := s.subRepo.GetByUserID(ctx, user.ID)
+	if errSub == nil && sub != nil {
+		user.Subscription = sub
+	}
+
+	return token, user, nil
 }

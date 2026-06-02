@@ -52,6 +52,8 @@ func RegisterRoutes(
 	auth := api.Group("/auth")
 	auth.Post("/register", authHandler.Register)
 	auth.Post("/login", authHandler.Login)
+	auth.Get("/google", authHandler.GoogleLogin)
+	auth.Get("/google/callback", authHandler.GoogleCallback)
 
 	// Auth routes (protected)
 	auth.Post("/logout", middleware.Protected(cfg), authHandler.Logout)

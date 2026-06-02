@@ -102,7 +102,7 @@ func main() {
 	billingService := service.NewBillingService(cfg, dbPool, planRepo, subRepo, userRepo, paymentRepo)
 
 	// 7. Initialize handlers
-	authHandler := handler.NewAuthHandler(authService, auditLogRepo)
+	authHandler := handler.NewAuthHandler(cfg, authService, auditLogRepo)
 	planHandler := handler.NewPlanHandler(planService)
 	domainHandler := handler.NewDomainHandler(domainService, auditLogRepo)
 	apiKeyHandler := handler.NewAPIKeyHandler(apiKeyService, auditLogRepo)

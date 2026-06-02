@@ -55,7 +55,7 @@ func (s *authService) Register(ctx context.Context, email, password, fullName st
 		return nil, fmt.Errorf("check existing user: %w", err)
 	}
 	if existing != nil {
-		return nil, errors.New("email address is already registered")
+		return nil, errors.New("alamat email sudah terdaftar")
 	}
 
 	// Hash password
@@ -147,17 +147,17 @@ func (s *authService) Login(ctx context.Context, email, password string) (string
 		return "", nil, fmt.Errorf("get user by email: %w", err)
 	}
 	if user == nil {
-		return "", nil, errors.New("invalid email or password")
+		return "", nil, errors.New("email atau password salah")
 	}
 
 	// Compare password
 	if !utils.ComparePassword(user.PasswordHash, password) {
-		return "", nil, errors.New("invalid email or password")
+		return "", nil, errors.New("email atau password salah")
 	}
 
 	// Check user status
 	if user.Status == models.StatusSuspended {
-		return "", nil, errors.New("your account has been suspended. Please contact support")
+		return "", nil, errors.New("akun Anda ditangguhkan. Silakan hubungi dukungan pelanggan")
 	}
 
 	// Generate JWT token
@@ -345,7 +345,7 @@ func (s *authService) LoginOrRegisterGoogle(ctx context.Context, email, fullName
 
 	// 3. Check user status
 	if user.Status == models.StatusSuspended {
-		return "", nil, errors.New("your account has been suspended. Please contact support")
+		return "", nil, errors.New("akun Anda ditangguhkan. Silakan hubungi dukungan pelanggan")
 	}
 
 	// 4. Generate JWT token

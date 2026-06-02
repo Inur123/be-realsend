@@ -66,7 +66,7 @@ type changePasswordRequest struct {
 func (h *AuthHandler) Register(c *fiber.Ctx) error {
 	var req registerRequest
 	if err := c.BodyParser(&req); err != nil {
-		return utils.BadRequest(c, "invalid request body")
+		return utils.BadRequest(c, "format data tidak valid")
 	}
 
 	if err := utils.ValidateStruct(&req); err != nil {
@@ -99,7 +99,7 @@ func (h *AuthHandler) Register(c *fiber.Ctx) error {
 func (h *AuthHandler) Login(c *fiber.Ctx) error {
 	var req loginRequest
 	if err := c.BodyParser(&req); err != nil {
-		return utils.BadRequest(c, "invalid request body")
+		return utils.BadRequest(c, "format data tidak valid")
 	}
 
 	if err := utils.ValidateStruct(&req); err != nil {
@@ -132,12 +132,12 @@ func (h *AuthHandler) Login(c *fiber.Ctx) error {
 func (h *AuthHandler) Me(c *fiber.Ctx) error {
 	userIDStr, ok := c.Locals("user_id").(string)
 	if !ok {
-		return utils.Unauthorized(c, "unauthorized")
+		return utils.Unauthorized(c, "sesi tidak valid atau kedaluwarsa")
 	}
 
 	userID, err := uuid.Parse(userIDStr)
 	if err != nil {
-		return utils.BadRequest(c, "invalid user id")
+		return utils.BadRequest(c, "ID pengguna tidak valid")
 	}
 
 	user, err := h.authService.GetProfile(c.Context(), userID)
@@ -163,17 +163,17 @@ func (h *AuthHandler) Me(c *fiber.Ctx) error {
 func (h *AuthHandler) UpdateProfile(c *fiber.Ctx) error {
 	userIDStr, ok := c.Locals("user_id").(string)
 	if !ok {
-		return utils.Unauthorized(c, "unauthorized")
+		return utils.Unauthorized(c, "sesi tidak valid atau kedaluwarsa")
 	}
 
 	userID, err := uuid.Parse(userIDStr)
 	if err != nil {
-		return utils.BadRequest(c, "invalid user id")
+		return utils.BadRequest(c, "ID pengguna tidak valid")
 	}
 
 	var req updateProfileRequest
 	if err := c.BodyParser(&req); err != nil {
-		return utils.BadRequest(c, "invalid request body")
+		return utils.BadRequest(c, "format data tidak valid")
 	}
 
 	if err := utils.ValidateStruct(&req); err != nil {
@@ -206,17 +206,17 @@ func (h *AuthHandler) UpdateProfile(c *fiber.Ctx) error {
 func (h *AuthHandler) ChangePassword(c *fiber.Ctx) error {
 	userIDStr, ok := c.Locals("user_id").(string)
 	if !ok {
-		return utils.Unauthorized(c, "unauthorized")
+		return utils.Unauthorized(c, "sesi tidak valid atau kedaluwarsa")
 	}
 
 	userID, err := uuid.Parse(userIDStr)
 	if err != nil {
-		return utils.BadRequest(c, "invalid user id")
+		return utils.BadRequest(c, "ID pengguna tidak valid")
 	}
 
 	var req changePasswordRequest
 	if err := c.BodyParser(&req); err != nil {
-		return utils.BadRequest(c, "invalid request body")
+		return utils.BadRequest(c, "format data tidak valid")
 	}
 
 	if err := utils.ValidateStruct(&req); err != nil {
@@ -248,12 +248,12 @@ func (h *AuthHandler) ChangePassword(c *fiber.Ctx) error {
 func (h *AuthHandler) Logout(c *fiber.Ctx) error {
 	userIDStr, ok := c.Locals("user_id").(string)
 	if !ok {
-		return utils.Unauthorized(c, "unauthorized")
+		return utils.Unauthorized(c, "sesi tidak valid atau kedaluwarsa")
 	}
 
 	userID, err := uuid.Parse(userIDStr)
 	if err != nil {
-		return utils.BadRequest(c, "invalid user id")
+		return utils.BadRequest(c, "ID pengguna tidak valid")
 	}
 
 	user, err := h.authService.GetProfile(c.Context(), userID)
@@ -428,9 +428,15 @@ func (h *AuthHandler) GoogleCallback(c *fiber.Ctx) error {
 	var email string
 	var name string
 
+	redirectToLoginError := func(errMsg string) error {
+		frontendLoginURL := "http://localhost:3000/login"
+		redirectURL := fmt.Sprintf("%s?error=%s", frontendLoginURL, url.QueryEscape(errMsg))
+		return c.Redirect(redirectURL, http.StatusTemporaryRedirect)
+	}
+
 	code := c.Query("code")
 	if code == "" {
-		return utils.BadRequest(c, "missing authorization code")
+		return redirectToLoginError("missing authorization code")
 	}
 
 	if code == "mock_google_flow_success" {
@@ -454,33 +460,33 @@ func (h *AuthHandler) GoogleCallback(c *fiber.Ctx) error {
 			"redirect_uri":  {h.cfg.GoogleRedirectURL},
 		})
 		if err != nil {
-			return utils.InternalError(c, fmt.Sprintf("failed to request token: %v", err))
+			return redirectToLoginError(fmt.Sprintf("failed to request token: %v", err))
 		}
 		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
 			body, _ := io.ReadAll(resp.Body)
-			return utils.Unauthorized(c, fmt.Sprintf("failed to exchange token: %s", string(body)))
+			return redirectToLoginError(fmt.Sprintf("failed to exchange token: %s", string(body)))
 		}
 
 		var tokenResp struct {
 			AccessToken string `json:"access_token"`
 		}
 		if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
-			return utils.InternalError(c, "failed to decode token response")
+			return redirectToLoginError("failed to decode token response")
 		}
 
 		// 2. Fetch user profile
 		profileURL := "https://www.googleapis.com/oauth2/v2/userinfo"
 		req, err := http.NewRequest("GET", profileURL, nil)
 		if err != nil {
-			return utils.InternalError(c, "failed to create profile request")
+			return redirectToLoginError("failed to create profile request")
 		}
 		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", tokenResp.AccessToken))
 
 		profileResp, err := http.DefaultClient.Do(req)
 		if err != nil || profileResp.StatusCode != http.StatusOK {
-			return utils.Unauthorized(c, "failed to get profile from Google")
+			return redirectToLoginError("failed to get profile from Google")
 		}
 		defer profileResp.Body.Close()
 
@@ -489,7 +495,7 @@ func (h *AuthHandler) GoogleCallback(c *fiber.Ctx) error {
 			Name  string `json:"name"`
 		}
 		if err := json.NewDecoder(profileResp.Body).Decode(&profile); err != nil {
-			return utils.InternalError(c, "failed to decode user profile")
+			return redirectToLoginError("failed to decode user profile")
 		}
 
 		email = profile.Email
@@ -497,13 +503,13 @@ func (h *AuthHandler) GoogleCallback(c *fiber.Ctx) error {
 	}
 
 	if email == "" {
-		return utils.BadRequest(c, "email not retrieved from google account")
+		return redirectToLoginError("email not retrieved from google account")
 	}
 
 	// Sign in or register via our AuthService
 	token, user, err := h.authService.LoginOrRegisterGoogle(c.Context(), email, name)
 	if err != nil {
-		return utils.BadRequest(c, err.Error())
+		return redirectToLoginError(err.Error())
 	}
 
 	// Audit log

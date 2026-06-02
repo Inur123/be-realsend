@@ -429,7 +429,7 @@ func (h *AuthHandler) GoogleCallback(c *fiber.Ctx) error {
 	var name string
 
 	redirectToLoginError := func(errMsg string) error {
-		frontendLoginURL := "http://localhost:3000/login"
+		frontendLoginURL := fmt.Sprintf("%s/login", h.cfg.CORSOrigins)
 		redirectURL := fmt.Sprintf("%s?error=%s", frontendLoginURL, url.QueryEscape(errMsg))
 		return c.Redirect(redirectURL, http.StatusTemporaryRedirect)
 	}
@@ -516,7 +516,7 @@ func (h *AuthHandler) GoogleCallback(c *fiber.Ctx) error {
 	utils.LogAction(c.Context(), h.auditRepo, c, user.ID, "auth.google", "user", &user.ID, map[string]string{"email": user.Email})
 
 	// Redirect back to frontend callback URL
-	frontendURL := "http://localhost:3000/auth/callback"
+	frontendURL := fmt.Sprintf("%s/auth/callback", h.cfg.CORSOrigins)
 	redirectURL := fmt.Sprintf("%s?token=%s", frontendURL, url.QueryEscape(token))
 
 	return c.Redirect(redirectURL, http.StatusTemporaryRedirect)

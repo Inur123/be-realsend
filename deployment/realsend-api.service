@@ -1,0 +1,15 @@
+[Unit]
+Description=RealSend Backend API
+After=network.target postgresql.service redis-server.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/var/www/realsend/be-realsend
+ExecStart=/var/www/realsend/be-realsend/bin/api
+Restart=always
+RestartSec=5
+EnvironmentFile=/var/www/realsend/be-realsend/.env
+
+[Install]
+WantedBy=multi-user.target

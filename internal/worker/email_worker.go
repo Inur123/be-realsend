@@ -5,6 +5,7 @@ import (
 	"crypto"
 	"crypto/rsa"
 	"crypto/sha256"
+	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
@@ -113,7 +114,7 @@ func (w *EmailWorker) ProcessTask(ctx context.Context, t *asynq.Task) error {
 		}
 	}
 
-	err = smtp.SendMail(smtpAddr, auth, emailLog.FromAddress, recipients, []byte(mimeMsg))
+	err = sendMailCustom(smtpAddr, auth, emailLog.FromAddress, recipients, []byte(mimeMsg), w.cfg.SMTPHost)
 	if err != nil {
 		w.failEmail(ctx, emailLog, "SMTP send failed: "+err.Error())
 		return fmt.Errorf("smtp send: %v", err)
@@ -276,4 +277,55 @@ func getBody(msg string) string {
 		return msg[idx+4:]
 	}
 	return ""
+}
+
+// sendMailCustom is a helper function that connects to SMTP, supports STARTTLS,
+// and optionally skips TLS verification for local loopback addresses (localhost/127.0.0.1/::1)
+// where self-signed or invalid certificates are commonly used.
+func sendMailCustom(addr string, a smtp.Auth, from string, to []string, msg []byte, host string) error {
+	c, err := smtp.Dial(addr)
+	if err != nil {
+		return err
+	}
+	defer c.Close()
+
+	if ok, _ := c.Extension("STARTTLS"); ok {
+		config := &tls.Config{ServerName: host}
+		if host == "localhost" || host == "127.0.0.1" || host == "::1" {
+			config.InsecureSkipVerify = true
+		}
+		if err = c.StartTLS(config); err != nil {
+			return err
+		}
+	}
+
+	if a != nil {
+		if ok, _ := c.Extension("AUTH"); ok {
+			if err = c.Auth(a); err != nil {
+				return err
+			}
+		}
+	}
+
+	if err = c.Mail(from); err != nil {
+		return err
+	}
+	for _, addr := range to {
+		if err = c.Rcpt(addr); err != nil {
+			return err
+		}
+	}
+	w, err := c.Data()
+	if err != nil {
+		return err
+	}
+	_, err = w.Write(msg)
+	if err != nil {
+		return err
+	}
+	err = w.Close()
+	if err != nil {
+		return err
+	}
+	return c.Quit()
 }

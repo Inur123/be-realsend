@@ -283,6 +283,7 @@ func getBody(msg string) string {
 // and optionally skips TLS verification for local loopback addresses (localhost/127.0.0.1/::1)
 // where self-signed or invalid certificates are commonly used.
 func sendMailCustom(addr string, a smtp.Auth, from string, to []string, msg []byte, host string) error {
+	log.Printf("[Worker] Custom SMTP dial to %s (host: %s)", addr, host)
 	c, err := smtp.Dial(addr)
 	if err != nil {
 		return err
@@ -291,8 +292,10 @@ func sendMailCustom(addr string, a smtp.Auth, from string, to []string, msg []by
 
 	if ok, _ := c.Extension("STARTTLS"); ok {
 		config := &tls.Config{ServerName: host}
-		if host == "localhost" || host == "127.0.0.1" || host == "::1" {
+		hostLower := strings.ToLower(host)
+		if hostLower == "localhost" || hostLower == "127.0.0.1" || hostLower == "::1" || hostLower == "[::1]" {
 			config.InsecureSkipVerify = true
+			log.Printf("[Worker] Localhost SMTP connection detected, setting InsecureSkipVerify = true")
 		}
 		if err = c.StartTLS(config); err != nil {
 			return err
